@@ -1,40 +1,26 @@
 # -*- coding: utf-8 -*-
-
+# ADD THIS TO THE END OF YOUR a-scissor_bars-v01.py SCRIPT
+# AFTER STEP 4 (Meshing) AND BEFORE STEP 9 (Regeneration)
 from abaqus import *
 from abaqusConstants import *
 import warnings
-import traceback # Import traceback for detailed error messages
-import part # Explicitly import part module
-import assembly # Explicitly import assembly module
-import regionToolset # Explicitly import regionToolset
-import mesh # Explicitly import mesh module (used for ElemType)
-import section # Explicitly import section module
-import connectorBehavior # Potentially needed if defining complex behaviors
+import traceback
+import part
+import assembly
+import regionToolset
+import mesh
+import section
+import connectorBehavior
 import math
 import re
 
 
-
 def create_direct_revolute_joint(model, assembly, inst1_name, vertex1_idx, 
                                 inst2_name, vertex2_idx, joint_name, 
-                                rotation_axis='Z', tolerance=0.001):
+                                rotation_axis='Z', tolerance=0.01):
     """
     Creates a revolute joint directly between two vertices of beam instances
-    This is the simplest and most reliable method for your scissor structure
-    
-    Args:
-        model: Abaqus model object
-        assembly: Abaqus assembly object
-        inst1_name: Name of first instance
-        vertex1_idx: Vertex index on first instance
-        inst2_name: Name of second instance  
-        vertex2_idx: Vertex index on second instance
-        joint_name: Unique name for this joint
-        rotation_axis: 'X', 'Y', or 'Z' - axis about which rotation is allowed
-        tolerance: Distance tolerance for finding nodes
-    
-    Returns:
-        Success boolean
+    Corrected version - fixes reference point set creation
     """
     
     try:
@@ -59,17 +45,24 @@ def create_direct_revolute_joint(model, assembly, inst1_name, vertex1_idx,
         # Check if vertices are close enough
         distance = math.sqrt(sum([(vertex1_coord[i] - vertex2_coord[i])**2 for i in range(3)]))
         if distance > tolerance:
-            warnings.warn(f"Vertices are {distance:.6f} apart, may need adjustment")
+            warnings.warn(f"Vertices are {distance:.6f} apart for joint {joint_name} (tolerance: {tolerance})")
         
         # 3. Create a reference point at the joint location (average of the two points)
         joint_coord = tuple((vertex1_coord[i] + vertex2_coord[i])/2.0 for i in range(3))
-        rp_joint = assembly.ReferencePoint(point=joint_coord)
+        rp_joint_feature = assembly.ReferencePoint(point=joint_coord)
+        # Get the actual reference point object from the feature
+        rp_joint = assembly.referencePoints[rp_joint_feature.id]
         rp_joint_set = assembly.Set(name=f"RP_{joint_name}", referencePoints=(rp_joint,))
         
         # 4. Find nodes at the vertex locations
         try:
             # Find node at vertex 1
-            node1 = assembly.nodes.findAt((vertex1_coord,))
+            node1 = None
+            try:
+                node1 = assembly.nodes.findAt((vertex1_coord,))
+            except:
+                pass
+                
             if not node1:
                 # Try to find nearby node
                 nearby_nodes1 = []
@@ -83,7 +76,12 @@ def create_direct_revolute_joint(model, assembly, inst1_name, vertex1_idx,
                     raise ValueError(f"No node found near vertex {vertex1_idx} of {inst1_name}")
             
             # Find node at vertex 2  
-            node2 = assembly.nodes.findAt((vertex2_coord,))
+            node2 = None
+            try:
+                node2 = assembly.nodes.findAt((vertex2_coord,))
+            except:
+                pass
+                
             if not node2:
                 nearby_nodes2 = []
                 for node in assembly.nodes:
@@ -96,7 +94,7 @@ def create_direct_revolute_joint(model, assembly, inst1_name, vertex1_idx,
                     raise ValueError(f"No node found near vertex {vertex2_idx} of {inst2_name}")
                     
         except Exception as node_err:
-            warnings.warn(f"Error finding nodes: {node_err}")
+            warnings.warn(f"Error finding nodes for {joint_name}: {node_err}")
             warnings.warn("Make sure instances are meshed before creating joints")
             return False
         
@@ -130,12 +128,12 @@ def create_direct_revolute_joint(model, assembly, inst1_name, vertex1_idx,
         
         # 7. Apply rotational constraints to create revolute behavior
         # Allow rotation only about the specified axis
-        if rotation_axis.upper() == 'Z':
-            constrained_dofs = [4, 5]  # UR1, UR2 (rotations about X, Y)
-        elif rotation_axis.upper() == 'Y':
-            constrained_dofs = [5, 6]  # UR1, UR3 (rotations about X, Z)
-        elif rotation_axis.upper() == 'X':
+        if rotation_axis.upper() == 'X':
             constrained_dofs = [5, 6]  # UR2, UR3 (rotations about Y, Z)
+        elif rotation_axis.upper() == 'Y':
+            constrained_dofs = [4, 6]  # UR1, UR3 (rotations about X, Z)
+        elif rotation_axis.upper() == 'Z':
+            constrained_dofs = [4, 5]  # UR1, UR2 (rotations about X, Y)
         else:
             warnings.warn(f"Invalid rotation axis: {rotation_axis}. Using Z.")
             constrained_dofs = [4, 5]
@@ -152,7 +150,7 @@ def create_direct_revolute_joint(model, assembly, inst1_name, vertex1_idx,
             amplitude=UNSET
         )
         
-        print(f"Successfully created direct revolute joint: {joint_name}")
+        print(f"Successfully created revolute joint: {joint_name}")
         print(f"  - Between {inst1_name}[V{vertex1_idx}] and {inst2_name}[V{vertex2_idx}]")
         print(f"  - Rotation allowed about {rotation_axis} axis")
         print(f"  - Distance between vertices: {distance:.6f}")
@@ -160,90 +158,126 @@ def create_direct_revolute_joint(model, assembly, inst1_name, vertex1_idx,
         return True
         
     except Exception as e:
-        warnings.warn(f"Failed to create direct revolute joint {joint_name}: {e}")
+        warnings.warn(f"Failed to create revolute joint {joint_name}: {e}")
         print(traceback.format_exc())
         return False
 
-def create_revolute_joints_for_scissor_pairs(model, assembly, instance_keys, rotation_axis='Z'):
+
+def create_revolute_joints_for_scissor_pairs(model, assembly, instance_keys):
     """
     Creates revolute joints for all scissor pairs in your structure
-    Adapted for your specific naming convention
-    
-    Args:
-        model: Abaqus model object
-        assembly: Abaqus assembly object
-        instance_keys: List of instance names from your main script
-        rotation_axis: Axis about which rotation is allowed
-    
-    Returns:
-        Number of joints created successfully
+    Adapted for your specific naming convention with correct rotation axes
     """
     
     joints_created = 0
     joint_errors = 0
     
     print(f"\nCreating revolute joints for scissor pairs...")
+    print(f"Total instances to process: {len(instance_keys)}")
     
-    # Process X-direction pairs (BarX-a with BarX-b)
-    for inst_name in instance_keys:
-        if inst_name.startswith("BarX-a_"):
-            # Find corresponding BarX-b instance
-            indices_part = inst_name.split("BarX-a_", 1)[1]
-            partner_name = f"BarX-b_{indices_part}"
+    # Process BarX pairs (BarX-a with BarX-b) - rotate around X-axis
+    barx_a_instances = [name for name in instance_keys if name.startswith("BarX-a_")]
+    print(f"Found {len(barx_a_instances)} BarX-a instances")
+    
+    for inst_name in barx_a_instances:
+        # Extract coordinates from instance name: BarX-a_x{ix}_y{iy}_z{iz}
+        # Find corresponding BarX-b instance
+        coords_part = inst_name.replace("BarX-a_", "")  # Gets "x{ix}_y{iy}_z{iz}"
+        partner_name = f"BarX-b_{coords_part}"
+        
+        if partner_name in assembly.instances:
+            # Create a clean joint name
+            joint_name = f"RevoluteX_{coords_part.replace('x', '').replace('y', '').replace('z', '').replace('_', '')}"
             
-            if partner_name in assembly.instances:
-                joint_name = f"RevoluteX_{indices_part.replace('_', '')}"
-                
-                # Create joint at vertex 2 (middle vertex after partitioning)
-                success = create_direct_revolute_joint(
-                    model=model,
-                    assembly=assembly,
-                    inst1_name=inst_name,
-                    vertex1_idx=2,  # Middle vertex
-                    inst2_name=partner_name,
-                    vertex2_idx=2,  # Middle vertex
-                    joint_name=joint_name,
-                    rotation_axis=rotation_axis
-                )
-                
-                if success:
-                    joints_created += 1
-                else:
-                    joint_errors += 1
-    
-    # Process Y-direction pairs (BarY-a with BarY-b)  
-    for inst_name in instance_keys:
-        if inst_name.startswith("BarY-a_"):
-            # Find corresponding BarY-b instance
-            indices_part = inst_name.split("BarY-a_", 1)[1]
-            partner_name = f"BarY-b_{indices_part}"
+            print(f"  Creating BarX joint: {inst_name} <-> {partner_name}")
             
-            if partner_name in assembly.instances:
-                joint_name = f"RevoluteY_{indices_part.replace('_', '')}"
-                
-                # Create joint at vertex 2 (middle vertex after partitioning)
-                success = create_direct_revolute_joint(
-                    model=model,
-                    assembly=assembly,
-                    inst1_name=inst_name,
-                    vertex1_idx=2,  # Middle vertex
-                    inst2_name=partner_name,
-                    vertex2_idx=2,  # Middle vertex
-                    joint_name=joint_name,
-                    rotation_axis=rotation_axis
-                )
-                
-                if success:
-                    joints_created += 1
-                else:
-                    joint_errors += 1
+            # Create joint at vertex 2 (middle vertex after partitioning)
+            # BarX rotates around X-axis
+            success = create_direct_revolute_joint(
+                model=model,
+                assembly=assembly,
+                inst1_name=inst_name,
+                vertex1_idx=2,  # Middle vertex
+                inst2_name=partner_name,
+                vertex2_idx=2,  # Middle vertex
+                joint_name=joint_name,
+                rotation_axis='X'  # BarX rotates around X-axis
+            )
+            
+            if success:
+                joints_created += 1
+            else:
+                joint_errors += 1
+        else:
+            warnings.warn(f"Partner instance {partner_name} not found for {inst_name}")
+            joint_errors += 1
     
-    print(f"Revolute joint creation completed:")
+    # Process BarZ pairs (BarZ-a with BarZ-b) - rotate around Z-axis  
+    barz_a_instances = [name for name in instance_keys if name.startswith("BarZ-a_")]
+    print(f"Found {len(barz_a_instances)} BarZ-a instances")
+    
+    for inst_name in barz_a_instances:
+        # Extract coordinates from instance name: BarZ-a_x{ix}_y{iy}_z{iz}
+        # Find corresponding BarZ-b instance
+        coords_part = inst_name.replace("BarZ-a_", "")  # Gets "x{ix}_y{iy}_z{iz}"
+        partner_name = f"BarZ-b_{coords_part}"
+        
+        if partner_name in assembly.instances:
+            # Create a clean joint name
+            joint_name = f"RevoluteZ_{coords_part.replace('x', '').replace('y', '').replace('z', '').replace('_', '')}"
+            
+            print(f"  Creating BarZ joint: {inst_name} <-> {partner_name}")
+            
+            # Create joint at vertex 2 (middle vertex after partitioning)
+            # BarZ rotates around Z-axis
+            success = create_direct_revolute_joint(
+                model=model,
+                assembly=assembly,
+                inst1_name=inst_name,
+                vertex1_idx=2,  # Middle vertex
+                inst2_name=partner_name,
+                vertex2_idx=2,  # Middle vertex
+                joint_name=joint_name,
+                rotation_axis='Z'  # BarZ rotates around Z-axis
+            )
+            
+            if success:
+                joints_created += 1
+            else:
+                joint_errors += 1
+        else:
+            warnings.warn(f"Partner instance {partner_name} not found for {inst_name}")
+            joint_errors += 1
+    
+    print(f"\nRevolute joint creation completed:")
     print(f"  - Joints created successfully: {joints_created}")
     print(f"  - Errors encountered: {joint_errors}")
     
     return joints_created
 
-# Usage example (add this to the end of your main script):
-# Make sure instances are meshed before creating joints
-# joints_created = create_revolute_joints_for_scissor_pairs(myModel, a, instance_keys, 'Z')
+
+# ====================================================================
+# ADD THIS STEP TO YOUR MAIN SCRIPT
+# Insert this between Step 4 (Meshing) and Step 9 (Regeneration)
+# ====================================================================
+
+print("\n--- Step 8: Create Revolute Joints ---")
+try:
+    joints_created = create_revolute_joints_for_scissor_pairs(
+        model=myModel, 
+        assembly=a, 
+        instance_keys=instance_keys
+    )
+    
+    if joints_created > 0:
+        print(f"Successfully created {joints_created} revolute joints")
+    else:
+        warnings.warn("No revolute joints were created")
+        overall_success = False
+        
+except Exception as joint_err:
+    warnings.warn(f"Error creating revolute joints: {joint_err}")
+    print(traceback.format_exc())
+    overall_success = False
+
+print("Finished Step 8.")
