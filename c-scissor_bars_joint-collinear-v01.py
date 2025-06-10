@@ -5,7 +5,8 @@ import math
 
 def create_rigid_joints_between_collinear_bars():
     """
-    Creates rigid joints between endpoints of collinear bars at adjacent levels.
+    Creates rigid joints between endpoints of collinear bars at adjacent levels:
+     BarX-a to BarX-a; BarX-b to BarX-b, BarZ-a to BarZ-a, BarZ-b to BarZ-b
     """
     
     # Get model and assembly references
