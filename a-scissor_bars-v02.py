@@ -14,12 +14,10 @@ import math
 import re
 
 """
-Updated scissor bars script with correct geometry:
-- Coordinate system: x (perpendicular to slope), y (vertical), z (along slope)
-- Slope in yz plane at ~30° angle
-- BarX: spans yz plane, rotates around x-axis
-- BarZ: spans xy plane, rotates around z-axis
-- Grandstand tapering: 5×6 to 1×6 modules in z-direction
+Updated scissor bars script with corrected grandstand geometry:
+- BarX: 7 rows always (ix=0-6), decreasing modules per row, NO BarX at top level
+- BarZ: decreasing rows (6,5,4,3,2,1), always 6 modules per row, continues to top
+- Density fixed as proper tuple format
 """
 
 # --- 0) Basic Setup: Model & Parameters ---
@@ -29,80 +27,78 @@ beam_section_name = 'RHS_48e3'
 material_name = 'Steel_355'
 profile_name = 'RHS_48e3_Profile'
 
-# Updated Geometry Parameters (30° slope)
+# Updated Geometry Parameters (30 degree slope)
 dx = 221    # spacing perpendicular to slope (x-direction)
 dy = 127.5  # height increment per level (y-direction)  
 dz = 221    # spacing along slope (z-direction)
 
 # Grandstand dimensions
-n_x = 6     # modules perpendicular to slope (constant)
-n_y = 5     # height levels (0 to 4: gives 5×6 to 1×6 tapering)
-n_z_base = 5  # modules along slope at ground level (tapers to 1)
+n_x = 6     # BarX: creates 7 rows (0-6), BarZ: creates max 6 rows (1-6) and 6 modules per row (0-5)
+n_y = 5     # BarX: creates 5 levels (0-4), BarZ: creates 6 levels (0-5) including top
+n_z_base = 5  # BarX: starting modules per row at ground level (5,4,3,2,1 decreasing)
 
 # CSYS names for connector orientation
 csys_X_name = 'Connector_Global_X_Orient'
-csys_Z_name = 'Connector_Global_Z_Orient'  # Updated from Y to Z
+csys_Z_name = 'Connector_Global_Z_Orient'
 
 # Define overall success flag
 overall_success = True
 
-print(f"Updated Geometry: dx={dx}, dy={dy}, dz={dz}")
-print(f"Grandstand: {n_x} × {n_y} × {n_z_base} (tapering in z-direction)")
+print(u"Grandstand: {} BarX rows x {} BarZ rows (tapering)".format(n_x+1, n_x))
 
 # ====================================================================
 # MAIN EXECUTION BLOCK (Sequential Steps)
 # ====================================================================
 
 # --- Access Model and Assembly ---
-print("\nStep 0: Accessing Model and Assembly...")
+ 
 try:
     myModel = mdb.models[model_name]
     a = myModel.rootAssembly
-    print(f"Successfully accessed model '{model_name}' and assembly.")
 except KeyError:
-    print(f"FATAL ERROR: Model '{model_name}' not found. Create it first or check name.")
+    print(u"FATAL ERROR: Model '{}' not found. Create it first or check name.".format(model_name))
     raise
 except Exception as e:
-    print(f"FATAL ERROR accessing model/assembly: {e}")
+    print(u"FATAL ERROR accessing model/assembly: {}".format(e))
     print(traceback.format_exc())
     raise
-print("Finished Step 0.")
+ 
 
 # --- Step 1: Define Material & Sections ---
-print("\nStep 1: Define Material & Sections")
+print(u"\nStep 1: Define Material & Sections")
 def create_nonlinear_steel(model, material_name):
     if material_name not in model.materials:
-        print(f"  Creating material: {material_name}")
+        print(u"  Creating material: {}".format(material_name))
         try:
             mat = model.Material(name=material_name)
             mat.Elastic(table=((2.1e11, 0.3),))  # Units: N/m2, nu
-            mat.Density(table=((7850),)) #kg
+            mat.Density(table=((7850,),))  # kg/m3 - CORRECTED: Fixed tuple format
             mat.Plastic(table=((3.55e8, 0.0), (4e8, 0.05)))  # yield stress, plastic strain
-            print(f"  Material '{material_name}' created.")
+            print(u"  Material '{}' created.".format(material_name))
         except Exception as e:
-            warnings.warn(f"Failed to create material '{material_name}': {e}")
+            warnings.warn(u"Failed to create material '{}': {}".format(material_name, e))
             print(traceback.format_exc())
             raise
     else:
-        print(f"  Material '{material_name}' already exists.")
+        print(u" Material '{}' already exists.".format(material_name))
 
 def create_pipe_section(model, profile_name, section_name, material_name):
     # Check/Create Profile
     if profile_name not in model.profiles:
-        print(f"  Creating profile: {profile_name}")
+        print(u"  Creating profile: {}".format(profile_name))
         try:
             model.PipeProfile(name=profile_name, r=0.02415, t=0.003)
-            print(f"  Profile '{profile_name}' created.")
+            print(u" Profile '{}' created.".format(profile_name))
         except Exception as e:
-            warnings.warn(f"Failed to create profile '{profile_name}': {e}")
+            warnings.warn(u"Failed to create profile '{}': {}".format(profile_name, e))
             print(traceback.format_exc())
             raise
     else:
-        print(f"  Profile '{profile_name}' already exists.")
+        print(u" Profile '{}' already exists.".format(profile_name))
 
     # Assign to a beam section
     if section_name not in model.sections:
-        print(f"  Creating section: {section_name}")
+        print(u" Creating section: {}".format(section_name))
         try:
             model.BeamSection(
                 name=section_name,
@@ -111,28 +107,26 @@ def create_pipe_section(model, profile_name, section_name, material_name):
                 material=material_name,
                 poissonRatio=0.3
             )
-            print(f"  Section '{section_name}' created.")
+            print(u"  Section '{}' created.".format(section_name))
         except Exception as e:
-            warnings.warn(f"Failed to create section '{section_name}': {e}")
+            warnings.warn("Failed to create section '{}': {}".format(section_name, e))
             print(traceback.format_exc())
             raise
     else:
-        print(f"  Section '{section_name}' already exists.")
+        print(u" Section '{}' already exists.".format(section_name))
 
 # Execute Step 1
 create_nonlinear_steel(myModel, material_name)
 create_pipe_section(myModel, profile_name, beam_section_name, material_name)
-print("Finished Step 1.")
+ 
 
-# --- Step 2: Create Parts ---
-print("\nStep 2: Create Parts")
 # --- Step 2: Create Parts ---
 print("\nStep 2: Create Parts")
 
 # Check if parts already exist (check one part as indicator)
 first_part_name = "BarX-a"
 if first_part_name in myModel.parts:
-    print(f"  Part '{first_part_name}' already exists. Skipping all part creation.")
+    print("  Part '{}' already exists. Skipping all part creation.".format(first_part_name))
     print("  Assuming all required parts exist...")
     # Still populate created_parts dict for later steps
     bar_part_definitions = [
@@ -146,24 +140,24 @@ if first_part_name in myModel.parts:
     for name, _, _ in bar_part_definitions:
         if name in myModel.parts:
             created_parts[name] = myModel.parts[name]
-            print(f"  Found existing part: {name}")
+            print("  Found existing part: {}".format(name))
         else:
-            warnings.warn(f"Expected part '{name}' not found!")
+            warnings.warn("Expected part '{}' not found!".format(name))
 else:
     print("  Creating new parts...")
     
     def create_bar(model_obj, part_name, start_point, end_point):
-        print(f"  Attempting to create/access part: {part_name}")
+        print("  Attempting to create/access part: {}".format(part_name))
         if part_name in model_obj.parts:
-            print(f"  Part '{part_name}' already exists. Skipping creation.")
+            print("  Part '{}' already exists. Skipping creation.".format(part_name))
             return model_obj.parts[part_name]
         try:
-            print(f"  Creating part: {part_name}")
+            print("  Creating part: {}".format(part_name))
             p = model_obj.Part(name=part_name, dimensionality=THREE_D, type=DEFORMABLE_BODY)
             p.WirePolyLine(points=(start_point, end_point), mergeType=IMPRINT, meshable=ON)
 
             # --- Partitioning (keeping your working logic) ---
-            print(f"  Partitioning part '{part_name}' into 4 equal segments...")
+            print("  Partitioning part '{}' into 4 equal segments...".format(part_name))
             try:
                 if not p.edges:
                     raise ValueError("Part has no edges after WirePolyLine.")
@@ -180,17 +174,17 @@ else:
                 if len(p.edges) > 2:
                     p.PartitionEdgeByParam(edges=(p.edges[2],), parameter=0.5)
                 else:
-                    warnings.warn(f"Could not perform the third partition on edges[2] for part '{part_name}'.")
+                    warnings.warn("Could not perform the third partition on edges[2] for part '{}'.".format(part_name))
 
             except IndexError as e_idx:
-                warnings.warn(f"Indexing error during partitioning of part '{part_name}': {e_idx}")
+                warnings.warn("Indexing error during partitioning of part '{}': {}".format(part_name, e_idx))
             except Exception as e_part:
-                warnings.warn(f"Error during partitioning of part '{part_name}': {e_part}")
+                warnings.warn("Error during partitioning of part '{}': {}".format(part_name, e_part))
                 print(traceback.format_exc())
 
             return p
         except Exception as e:
-            warnings.warn(f"Failed to create/partition part '{part_name}': {e}")
+            warnings.warn("Failed to create/partition part '{}': {}".format(part_name, e))
             print(traceback.format_exc())
             raise
 
@@ -212,36 +206,36 @@ else:
         part_obj = create_bar(myModel, name, start, end)
         if part_obj:
             created_parts[name] = part_obj
-            print(f"  Created/accessed part: {name}")
+             
 
-print("Finished Step 2.")
+ 
 
 # --- Step 3: Assign Beam Section and Orientation to Parts ---
 print("\nStep 3: Assign Beam Section and Orientation")
 def assign_sections_to_parts(model, part_names, section_name):
-    print(" --- Assigning Beam Sections ---")
+    
     success = True
     for part_name in part_names:
         if part_name in model.parts:
             try:
                 part = model.parts[part_name]
-                print(f"  Assigning section to Part '{part_name}'...")
+                print("  Assigning section to Part '{}'...".format(part_name))
                 all_edges = part.edges
                 if not all_edges:
-                    warnings.warn(f"No edges found for part '{part_name}' during section assignment.")
+                    warnings.warn(u"No edges found for part '{}' during section assignment.".format(part_name))
                     success = False
                     continue
                 region = regionToolset.Region(edges=all_edges)
                 part.SectionAssignment(region=region, sectionName=section_name, offset=0.0,
                                      offsetType=MIDDLE_SURFACE, offsetField='',
                                      thicknessAssignment=FROM_SECTION)
-                print(f"  Assigned section '{section_name}' to part '{part_name}'.")
+                print(u"  Assigned section '{}' to part '{}'.".format(section_name, part_name))
             except Exception as e:
-                warnings.warn(f"Failed to assign section to part '{part_name}': {e}")
+                warnings.warn(u"Failed to assign section to part '{}': {}".format(part_name, e))
                 print(traceback.format_exc())
                 success = False
         else:
-            warnings.warn(f"Part '{part_name}' not found for section assignment.")
+            warnings.warn(u"Part '{}' not found for section assignment.".format(part_name))
             success = False
     return success
 
@@ -253,21 +247,21 @@ def assign_beam_orientation_to_parts(model, part_names):
         if part_name in model.parts:
             try:
                 part = model.parts[part_name]
-                print(f"  Assigning orientation to Part '{part_name}'...")
+                print("  Assigning orientation to Part '{}'...".format(part_name))
                 all_edges = part.edges
                 if not all_edges:
-                    warnings.warn(f"No edges found for part '{part_name}' during orientation assignment.")
+                    warnings.warn("No edges found for part '{}' during orientation assignment.".format(part_name))
                     success = False
                     continue
                 region = regionToolset.Region(edges=all_edges)
                 part.assignBeamSectionOrientation(method=N1_COSINES, n1=n1_direction, region=region)
-                print(f"  Assigned beam orientation to part '{part_name}' (n1={n1_direction}).")
+                print("  Assigned beam orientation to part '{}' (n1={}).".format(part_name, n1_direction))
             except Exception as e:
-                warnings.warn(f"Failed to assign beam orientation to part '{part_name}': {e}")
+                warnings.warn("Failed to assign beam orientation to part '{}': {}".format(part_name, e))
                 print(traceback.format_exc())
                 success = False
         else:
-            warnings.warn(f"Part '{part_name}' not found for orientation assignment.")
+            warnings.warn("Part '{}' not found for orientation assignment.".format(part_name))
             success = False
     return success
 
@@ -292,25 +286,25 @@ def mesh_bars(model_obj, part_names_to_mesh):
         if part_name in model_obj.parts:
             try:
                 part = model_obj.parts[part_name]
-                print(f"  Seeding part '{part_name}' (size={global_seed_size})...")
+                print("  Seeding part '{}' (size={})...".format(part_name, global_seed_size))
                 part.seedPart(size=global_seed_size, deviationFactor=0.1, minSizeFactor=0.1)
-                print(f"  Setting element type for '{part_name}'...")
+                print("  Setting element type for '{}'...".format(part_name))
                 all_edges = part.edges
                 if not all_edges:
-                    warnings.warn(f"No edges found for element type assignment on part '{part_name}'.")
+                    warnings.warn("No edges found for element type assignment on part '{}'.".format(part_name))
                     success = False
                     continue
                 region = regionToolset.Region(edges=all_edges)
                 part.setElementType(regions=region, elemTypes=(elemType,))
-                print(f"  Generating mesh for part '{part_name}'...")
+                print("  Generating mesh for part '{}'...".format(part_name))
                 part.generateMesh()
-                print(f"  Meshed part {part_name}.")
+                print("  Meshed part {}.".format(part_name))
             except Exception as e:
-                warnings.warn(f"Failed to mesh part '{part_name}': {e}")
+                warnings.warn("Failed to mesh part '{}': {}".format(part_name, e))
                 print(traceback.format_exc())
                 success = False
         else:
-            warnings.warn(f"Part '{part_name}' not found for meshing.")
+            warnings.warn("Part '{}' not found for meshing.".format(part_name))
             success = False
     return success
 
@@ -321,12 +315,24 @@ if not mesh_ok:
     warnings.warn("Problem meshing one or more BAR parts.")
 print("Finished Step 4.")
 
-# --- Step 5: Create Instances with Updated Naming ---
-print("\nStep 5: Create Instances with Grandstand Geometry")
+# --- Step 5: Create Instances with Corrected Naming ---
+print("\nStep 5: Create Instances with Corrected Grandstand Geometry")
 
 def create_grandstand_instances(assembly_obj, model_obj, n_x, n_y, n_z_base, step_x, step_y, step_z):
-    """Creates instances using grandstand geometry with updated naming."""
-    print(" --- Creating Grandstand Instances ---")
+    """
+    Creates instances using corrected grandstand geometry logic.
+    
+    BarX Logic:
+    - Always 7 rows (ix = 0,1,2,3,4,5,6) 
+    - Modules per row decrease as height increases
+    - No BarX at top level
+    
+    BarZ Logic:
+    - Number of rows decreases as height increases (6,5,4,3,2,1)
+    - Each row always has 6 modules (iz = 0,1,2,3,4,5)
+    - Continues to top level with 1 row
+    """
+    print(" --- Creating Grandstand Instances with Corrected Logic ---")
     instances_created_total = 0
     instances_skipped_total = 0
     success = True
@@ -338,25 +344,28 @@ def create_grandstand_instances(assembly_obj, model_obj, n_x, n_y, n_z_base, ste
 
     # --- BarX Instances (yz plane) ---
     print("  Processing BarX instances (yz plane)...")
+    print("  BarX Logic: 7 rows always, decreasing modules per row, no BarX at top")
     inst_count_x_created = 0
     inst_count_x_skipped = 0
     
     for bar_name in bars_x:
         if bar_name not in model_obj.parts:
-            warnings.warn(f"Part '{bar_name}' not found. Skipping instances for this part.")
+            warnings.warn("Part '{}' not found. Skipping instances for this part.".format(bar_name))
             success = False
             continue
         p = model_obj.parts[bar_name]
 
         try:
-            for iy in range(n_y):  # Height levels
-                # Calculate how many z-modules exist at this height (tapering)
-                n_z_at_level = max(1, n_z_base - iy)  
+            for iy in range(n_y):  # Height levels (0,1,2,3,4) - NO TOP LEVEL for BarX
+                # Calculate modules per row (decreases with height)
+                modules_per_row = max(1, n_z_base - iy)  # 5,4,3,2,1
                 
-                for iz in range(n_z_at_level):  # Along slope (tapering)
-                    for ix in range(n_x + 1):  # Perpendicular to slope (need bars at boundaries: 0 to 6)
+                print("    Level {}: 7 rows, {} modules per row".format(iy, modules_per_row))
+                
+                for ix in range(n_x + 1):  # Always 7 rows (0,1,2,3,4,5,6)
+                    for iz in range(modules_per_row):  # Decreasing modules per row
                         # Updated naming convention
-                        inst_name = f"{bar_name}_x{ix}_y{iy}_z{iz}"
+                        inst_name = "{}_x{}_y{}_z{}".format(bar_name, ix, iy, iz)
                         instance_keys_generated.append(inst_name)
 
                         if inst_name in assembly_obj.instances:
@@ -376,42 +385,46 @@ def create_grandstand_instances(assembly_obj, model_obj, n_x, n_y, n_z_base, ste
                                 inst.translate(vector=(x_pos, y_pos, z_pos))
                                 
                         except Exception as e_inst:
-                            warnings.warn(f"Error creating/translating instance '{inst_name}': {e_inst}")
+                            warnings.warn("Error creating/translating instance '{}': {}".format(inst_name, e_inst))
                             print(traceback.format_exc())
                             success = False
                             if inst_name in assembly_obj.instances:
                                 try: del assembly_obj.instances[inst_name]
                                 except: pass
+                                
         except Exception as e_loop_x:
-            warnings.warn(f"Error during instance creation loop for BarX part '{bar_name}': {e_loop_x}")
+            warnings.warn("Error during instance creation loop for BarX part '{}': {}".format(bar_name, e_loop_x))
             print(traceback.format_exc())
             success = False
 
     instances_created_total += inst_count_x_created
     instances_skipped_total += inst_count_x_skipped
-    print(f"  BarX Instances Created: {inst_count_x_created}, Skipped: {inst_count_x_skipped}")
+    print("  BarX Instances Created: {}, Skipped: {}".format(inst_count_x_created, inst_count_x_skipped))
 
     # --- BarZ Instances (xy plane) ---
     print("  Processing BarZ instances (xy plane)...")
+    print("  BarZ Logic: decreasing rows, always 6 modules per row, continues to top")
     inst_count_z_created = 0
     inst_count_z_skipped = 0
     
     for bar_name in bars_z:
         if bar_name not in model_obj.parts:
-            warnings.warn(f"Part '{bar_name}' not found. Skipping instances for this part.")
+            warnings.warn("Part '{}' not found. Skipping instances for this part.".format(bar_name))
             success = False
             continue
         p = model_obj.parts[bar_name]
 
         try:
-            for iy in range(n_y):  # Height levels
-                # Calculate how many z-modules exist at this height (tapering)
-                n_z_at_level = max(1, n_z_base - iy)
+            for iy in range(n_y + 1):  # Height levels (0,1,2,3,4,5) - INCLUDING TOP LEVEL for BarZ
+                # Calculate number of rows (decreases with height)
+                num_rows = max(1, n_x - iy)  # 6,5,4,3,2,1
                 
-                for iz in range(n_z_at_level):  # Along slope (tapering)
-                    for ix in range(n_x ):  # Perpendicular to slope (need bars at boundaries: 0 to 5)
+                print("    Level {}: {} rows, 6 modules per row".format(iy, num_rows))
+                
+                for ix in range(1, num_rows + 1):  # Decreasing number of rows (1-6, 1-5, 1-4, 1-3, 1-2, 1)
+                    for iz in range(n_x):  # Always 6 modules per row (0,1,2,3,4,5)
                         # Updated naming convention
-                        inst_name = f"{bar_name}_x{ix}_y{iy}_z{iz}"
+                        inst_name = "{}_x{}_y{}_z{}".format(bar_name, ix, iy, iz)
                         instance_keys_generated.append(inst_name)
 
                         if inst_name in assembly_obj.instances:
@@ -431,30 +444,43 @@ def create_grandstand_instances(assembly_obj, model_obj, n_x, n_y, n_z_base, ste
                                 inst.translate(vector=(x_pos, y_pos, z_pos))
                                 
                         except Exception as e_inst:
-                            warnings.warn(f"Error creating/translating instance '{inst_name}': {e_inst}")
+                            warnings.warn("Error creating/translating instance '{}': {}".format(inst_name, e_inst))
                             print(traceback.format_exc())
                             success = False
                             if inst_name in assembly_obj.instances:
                                 try: del assembly_obj.instances[inst_name]
                                 except: pass
+                                
         except Exception as e_loop_z:
-            warnings.warn(f"Error during instance creation loop for BarZ part '{bar_name}': {e_loop_z}")
+            warnings.warn("Error during instance creation loop for BarZ part '{}': {}".format(bar_name, e_loop_z))
             print(traceback.format_exc())
             success = False
 
     instances_created_total += inst_count_z_created
     instances_skipped_total += inst_count_z_skipped
-    print(f"  BarZ Instances Created: {inst_count_z_created}, Skipped: {inst_count_z_skipped}")
+    print("  BarZ Instances Created: {}, Skipped: {}".format(inst_count_z_created, inst_count_z_skipped))
 
-    print(f"\nTotal Instances Newly Created: {instances_created_total}")
-    print(f"Total Instances Skipped (already existed): {instances_skipped_total}")
+    print("\nTotal Instances Newly Created: {}".format(instances_created_total))
+    print("Total Instances Skipped (already existed): {}".format(instances_skipped_total))
+    
+    # Print summary of what was created
+    print("\n=== INSTANCE CREATION SUMMARY ===")
+    print("BarX instances:")
+    for iy in range(n_y):
+        modules_per_row = max(1, n_z_base - iy)
+        print("  Level {}: 7 rows x {} modules = {} instances per part".format(iy, modules_per_row, 7 * modules_per_row))
+    
+    print("BarZ instances:")
+    for iy in range(n_y + 1):
+        num_rows = max(1, n_x - iy)
+        print("  Level {}: {} rows x 6 modules = {} instances per part".format(iy, num_rows, num_rows * 6))
     
     if not success: 
         warnings.warn("Issues encountered during instance creation.")
     
     # Remove duplicates and return sorted list
     unique_instance_keys = sorted(list(set(instance_keys_generated)))
-    print(f"Total distinct instance names tracked: {len(unique_instance_keys)}")
+    print("Total distinct instance names tracked: {}".format(len(unique_instance_keys)))
     return success, unique_instance_keys
 
 # Execute Step 5
@@ -470,8 +496,11 @@ print("\nStep 9: Regenerating Assembly...")
 a.regenerate()
 print("Assembly regenerated.")
 
-print(f"\nScript completed. Overall success: {overall_success}")
+print("\nScript completed. Overall success: {}".format(overall_success))
 if overall_success:
     print("Ready for connector creation in next script!")
+    print("Structure created with corrected tapering logic:")
+    print("- BarX: 7 rows always, decreasing modules per row, NO BarX at top")
+    print("- BarZ: decreasing rows (6 to 1), always 6 modules per row, continues to top")
 else:
     print("Please review warnings above before proceeding.")
