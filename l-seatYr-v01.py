@@ -49,7 +49,7 @@ segments = [
 
 # Instance pattern parameters (finer spacing than LowerChord)
 n_instances_x = 6  # 6 rows along x direction (one less than before)
-n_levels_y = 18    # More levels due to finer y spacing (6 original levels * 3)
+n_levels_y = 16    # More levels due to finer y spacing (6 original levels * 3)
 n_levels_z = 15    # More levels due to finer z spacing (5 original levels * 3)
 spacing_x = dx     # 221 cm spacing between instances
 spacing_y = dy / 3 # 127.5/3 = 42.5 cm spacing in y
@@ -338,13 +338,12 @@ if seat_y_part:
 # Step 5: Create SeatY Instances
 print("\nStep 5: Create SeatY Instances")
 
-def create_seat_y_instances(assembly_obj, model_obj, part_name, n_instances_x, spacing_x, spacing_y, spacing_z, start_z):
-    """Create instances of SeatY with finer spacing grid, rotated 90deg CW around Y."""
+def create_seat_y_instances(assembly_obj, model_obj, part_name, n_instances_x, n_levels_y, spacing_x, spacing_y, spacing_z, start_z):
+    """Create instances of SeatY following LowerChord pattern but with finer spacing."""
     
-    print("  Creating SeatY instances with finer spacing...")
-    print("  X spacing: {} cm (6 instances)".format(spacing_x))
-    print("  Y spacing: {:.1f} cm".format(spacing_y))
-    print("  Z spacing: {:.1f} cm".format(spacing_z))
+    print("  Creating SeatY instances...")
+    print("  Pattern: {} instances per level, {} levels".format(n_instances_x, n_levels_y))
+    print("  Finer spacing: Y={:.1f}cm, Z={:.1f}cm between levels".format(spacing_y, spacing_z))
     print("  Each instance rotated 90 degrees clockwise around Y axis")
     
     if part_name not in model_obj.parts:
@@ -357,120 +356,68 @@ def create_seat_y_instances(assembly_obj, model_obj, part_name, n_instances_x, s
     success = True
     
     try:
-        # Create a 3D grid of instances
-        # Y: from 127.5 to 765 with spacing 42.5 (18 levels)
-        # Z: from 1105 to 0 with spacing 73.67 (15 levels)
-        
-        y_positions = []
-        y_current = 1.275  # Start at first level
-        while y_current <= 7.65:
-            y_positions.append(y_current)
-            y_current += spacing_y
-        
-        z_positions = []
-        z_current = start_z  # Start at 1105
-        while z_current >= 0:
-            z_positions.append(z_current)
-            z_current -= spacing_z
-        
-        print("  Y positions ({} levels): {}".format(len(y_positions), [round(y, 1) for y in y_positions[:5]] + ["..."]))
-        print("  Z positions ({} levels): {}".format(len(z_positions), [round(z, 1) for z in z_positions[:5]] + ["..."]))
-        
-        instance_count = 0
-        
-        for iy, y_pos in enumerate(y_positions):
-            for iz, z_pos in enumerate(z_positions):
-                for ix in range(n_instances_x):  # Instances: 0, 1, 2, 3, 4, 5
-                    x_position = ix * spacing_x  # x = 0, 221, 442, 663, 884, 1105
+        for iy in range(n_levels_y):  # More levels due to finer spacing
+            y_pos = 1.275 + (iy * spacing_y)      # Start at 127.5, step by 42.5
+            z_pos = start_z - (iy * spacing_z)    # Start at 1105, step back by 73.67
+            
+            print("    Level {}: y = {:.1f}, z = {:.1f}".format(iy + 1, y_pos, z_pos))
+            
+            for ix in range(n_instances_x):  # 6 instances per level
+                x_position = ix * spacing_x  # x = 0, 221, 442, 663, 884, 1105
+                
+                # Instance naming
+                inst_name = "SeatY_x{}_y{}_z{}".format(ix, iy + 1, 0)
+                
+                if inst_name in assembly_obj.instances:
+                    instances_skipped += 1
+                    continue
+                
+                try:
+                    # Create instance
+                    inst = assembly_obj.Instance(name=inst_name, part=p, dependent=ON)
+                    instances_created += 1
                     
-                    # Instance naming
-                    inst_name = "SeatY_x{}_y{}_z{}".format(ix, iy, iz)
+                    # Translate to correct position
+                    translation_vector = (x_position, y_pos, z_pos)
+                    inst.translate(vector=translation_vector)
                     
+                    # Rotate 90 degrees clockwise around Y axis using assembly method
+                    assembly_obj.rotate(instanceList=(inst_name,), 
+                                       axisPoint=(x_position, y_pos, z_pos), 
+                                       axisDirection=(0.0, 1.0, 0.0), 
+                                       angle=90.0)
+                    
+                    if iy < 3:  # Show first few levels
+                        print("      Created: {} at position ({:.1f}, {:.1f}, {:.1f}) rotated 90deg CW".format(
+                            inst_name, x_position, y_pos, z_pos))
+                    elif iy == 3:
+                        print("      ... creating remaining levels ...")
+                    
+                except Exception as e_inst:
+                    warnings.warn("Error creating instance '{}': {}".format(inst_name, e_inst))
+                    success = False
                     if inst_name in assembly_obj.instances:
-                        instances_skipped += 1
-                        continue
-                    
-                    try:
-                        # Create instance
-                        inst = assembly_obj.Instance(name=inst_name, part=p, dependent=ON)
-                        instances_created += 1
-                        instance_count += 1
-                        
-                        # Translate to correct position
-                        translation_vector = (x_position, y_pos, z_pos)
-                        inst.translate(vector=translation_vector)
-                        
-                        # Rotate 90 degrees clockwise around Y axis using assembly method
-                        assembly_obj.rotate(instanceList=(inst_name,), 
-                                           axisPoint=(x_position, y_pos, z_pos), 
-                                           axisDirection=(0.0, 1.0, 0.0), 
-                                           angle=90.0)
-                        
-                    except Exception as e_inst:
-                        warnings.warn("Error creating instance '{}': {}".format(inst_name, e_inst))
-                        success = False
-                        if inst_name in assembly_obj.instances:
-                            try: 
-                                del assembly_obj.instances[inst_name]
-                            except: 
-                                pass
+                        try: 
+                            del assembly_obj.instances[inst_name]
+                        except: 
+                            pass
     
     except Exception as e_loop:
         warnings.warn("Error during SeatY instance creation: {}".format(e_loop))
         print(traceback.format_exc())
         success = False
     
-    total_expected = len(y_positions) * len(z_positions) * n_instances_x
     print("  SeatY instances created: {}, skipped: {}".format(instances_created, instances_skipped))
-    print("  Total SeatY instances: {} (expected: {})".format(instances_created + instances_skipped, total_expected))
+    print("  Total SeatY instances: {}".format(instances_created + instances_skipped))
     
     return success
 
 # Execute Step 5
 if seat_y_part:
-    instances_ok = create_seat_y_instances(a, myModel, part_name, n_instances_x, spacing_x, spacing_y, spacing_z, start_z)
+    instances_ok = create_seat_y_instances(a, myModel, part_name, n_instances_x, n_levels_y, spacing_x, spacing_y, spacing_z, start_z)
     if not instances_ok:
         overall_success = False
         warnings.warn("Failed to create SeatY instances")
-
-# Step 6: Create Set for SeatY Instances
-print("\nStep 6: Create Set for SeatY Instances")
-
-def create_seat_y_set(assembly_obj):
-    """Create set containing all SeatY instances."""
-    
-    print("  Creating SeatY instance set...")
-    
-    # Find all SeatY instances
-    seat_y_instances = []
-    for inst_name in assembly_obj.instances.keys():
-        if inst_name.startswith('SeatY_'):
-            seat_y_instances.append(assembly_obj.instances[inst_name])
-    
-    print("  Found {} SeatY instances".format(len(seat_y_instances)))
-    
-    if len(seat_y_instances) > 0:
-        try:
-            set_name = "SeatY"
-            if set_name in assembly_obj.sets:
-                print("  Set '{}' already exists, will replace it".format(set_name))
-                del assembly_obj.sets[set_name]
-            
-            assembly_obj.Set(instances=tuple(seat_y_instances), name=set_name)
-            print("  Created set '{}' with {} SeatY instances".format(set_name, len(seat_y_instances)))
-            return True
-            
-        except Exception as e:
-            print("  Error creating SeatY set: {}".format(e))
-            return False
-    else:
-        print("  No SeatY instances found for set creation")
-        return False
-
-# Execute Step 6
-set_created = create_seat_y_set(a)
-if not set_created:
-    print("  WARNING: SeatY set not created")
 
 # Step 7: Regenerate Assembly
 print("\nStep 7: Regenerating Assembly...")
