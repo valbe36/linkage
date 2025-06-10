@@ -158,57 +158,40 @@ def count_bars_by_type(bars_at_location):
     return counts
 
 def create_rps_and_wires(assembly, internal_intersections):
+ 
     """
-    Create RPs and wires for internal intersections.
+    Create RPs and wires for internal intersections - UPDATED with modular tracking.
     Returns (rp_count, wire_count).
     """
-    rp_count = 0
-    wire_count = 0
     
-    for i, (location, bars_at_location, bar_counts) in enumerate(internal_intersections):
-        
-        # Create descriptive RP name based on coordinates
-        x_coord = int(round(location[0]))
-        y_coord = int(round(location[1]))
-        z_coord = int(round(location[2]))
-        rp_name = "RP_Universal_X" + str(x_coord) + "_Y" + str(y_coord) + "_Z" + str(z_coord)
-        
-        print("")
-        print("Creating RP " + str(i+1) + ": " + rp_name)
-        print("  Location: " + str(location))
-        
-        # Create reference point
-        try:
-            rp_feature = assembly.ReferencePoint(point=location)
-            rp = assembly.referencePoints[rp_feature.id]
-            rp_count += 1
-            
-            print("  RP created successfully")
-            
-            # Find representative bars for wires
-            barx_rep = find_representative_bar(bars_at_location, 'BarX')
-            barz_rep = find_representative_bar(bars_at_location, 'BarZ')
-            
-            # Create wire RP -> BarX
-            if barx_rep:
-                wire_name_x = "UniversalJoint_BarX_" + str(i+1)
-                if create_rp_to_bar_wire(assembly, rp, barx_rep, location, wire_name_x, "BarX"):
-                    wire_count += 1
-            else:
-                print("  Warning: No BarX representative found")
-            
-            # Create wire RP -> BarZ  
-            if barz_rep:
-                wire_name_z = "UniversalJoint_BarZ_" + str(i+1)
-                if create_rp_to_bar_wire(assembly, rp, barz_rep, location, wire_name_z, "BarZ"):
-                    wire_count += 1
-            else:
-                print("  Warning: No BarZ representative found")
-                
-        except Exception as e:
-            print("  Error creating RP: " + str(e))
+    # Get module dimensions from script a parameters
+    dx = 221
+    dy = 127.5
+    dz = 221
+    
+    print("Creating internal RPs with modular coordinate system...")
+    print("Module dimensions: dx={}, dy={}, dz={}".format(dx, dy, dz))
+    
+    # Use the modular RP creation function
+    rp_count, wire_count, created_rps = create_rps_and_wires_internal_modular(
+        assembly, internal_intersections, dx, dy, dz
+    )
+    
+    # Store created RPs info for potential later use
+    print("")
+    print("=== INTERNAL RP CREATION SUMMARY ===")
+    print("RPs created: {}".format(rp_count))
+    print("Wires created: {}".format(wire_count))
+    
+    # Show some examples of created modular sets
+    print("Example modular sets created:")
+    for rp, module_coords, set_name, location in created_rps[:3]:
+        print("  {} -> module {}".format(set_name, module_coords))
+    if len(created_rps) > 3:
+        print("  ... and {} more".format(len(created_rps) - 3))
     
     return rp_count, wire_count
+
 
 def find_representative_bar(bars_at_location, bar_type):
     """
@@ -315,3 +298,14 @@ if __name__ == "__main__":
         print("Error in main execution: " + str(e))
         import traceback
         traceback.print_exc()
+        print("")
+    print("=== MODULAR RP MANAGEMENT READY ===")
+    print("Individual access: Use sets named 'RP_x#_y#_z#' where #=module coordinates")
+    print("Purpose sets: Create programmatically when needed")
+    print("")
+    print("Available utility functions:")
+    print("- create_ground_supports_set(assembly)")
+    print("- create_load_application_set(assembly)")  
+    print("- create_cable_attachment_set(assembly)")
+    print("- get_rp_by_module_coords(assembly, mod_x, mod_y, mod_z)")
+    print("- find_rps_in_module_range(assembly, x_range, y_range, z_range)")

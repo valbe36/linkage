@@ -4,11 +4,13 @@ from abaqusConstants import *
 import regionToolset
 import math
 
-def create_boundary_barx_barz_joints():
+def create_boundary_supports_all_endpoints():
     """
-    Create RPs and constrained wires at boundary BarX-BarZ intersections.
-    Excludes internal intersections (those with 4+ bars per type).
-    Creates separate RP->BarX and RP->BarZ wires with clear naming.
+    Create RPs and constrained wires at ALL boundary endpoints/startpoints.
+    - Processes all boundary endpoints regardless of bar type intersections
+    - Excludes midpoints (only start/end points)
+    - Excludes internal intersections using existing criteria
+    - Creates appropriate supports based on what bar types are present
     """
     
     # Get model and assembly references
@@ -16,22 +18,22 @@ def create_boundary_barx_barz_joints():
     assembly = model.rootAssembly
     instances = assembly.instances
     
-    print("=== BOUNDARY BarX-BarZ JOINT CREATION ===")
+    print("=== BOUNDARY SUPPORTS FOR ALL ENDPOINTS ===")
     print("")
-    print("Step 1: Finding boundary intersection points...")
+    print("Step 1: Finding all boundary endpoints...")
     
-    # Find boundary intersections (exclude internal ones)
-    boundary_intersections = find_boundary_barx_barz_intersections(instances)
+    # Find all boundary endpoints (excluding midpoints and internal points)
+    boundary_endpoints = find_all_boundary_endpoints(instances)
     
     print("")
-    print("Step 2: Creating RPs and wires at boundary intersections...")
+    print("Step 2: Creating RPs and wires at boundary endpoints...")
     
     # Create RPs and wires
-    rp_count, wire_x_count, wire_z_count = create_boundary_rps_and_wires(assembly, boundary_intersections)
+    rp_count, wire_x_count, wire_z_count = create_boundary_rps_and_wires_all_endpoints(assembly, boundary_endpoints)
     
     print("")
     print("=== SUMMARY ===")
-    print("Boundary intersection points: " + str(len(boundary_intersections)))
+    print("Boundary endpoint locations: " + str(len(boundary_endpoints)))
     print("Reference Points created: " + str(rp_count))
     print("RP-to-BarX wires created: " + str(wire_x_count))
     print("RP-to-BarZ wires created: " + str(wire_z_count))
@@ -44,18 +46,18 @@ def create_boundary_barx_barz_joints():
     print("   Apply constraints: U1,U2,U3=FIXED, UR1=FIXED, UR2=FIXED, UR3=FREE")
     print("3. Apply ground pins to RPs as needed")
 
-def find_boundary_barx_barz_intersections(instances):
+def find_all_boundary_endpoints(instances):
     """
-    Find boundary intersections between BarX and BarZ.
-    Boundary = BarX and BarZ meet, but < 2 bars of any type (not internal).
+    Find ALL boundary endpoints/startpoints (excluding midpoints).
+    Boundary = endpoint/startpoint that is NOT at an internal intersection.
     """
     
-    # Group all bars by their vertex locations
-    location_groups = group_bars_by_vertices(instances)
+    # Group all bars by their vertex locations, but ONLY endpoints
+    location_groups = group_bars_by_endpoints_only(instances)
     
-    boundary_intersections = []
+    boundary_endpoints = []
     
-    print("Analyzing " + str(len(location_groups)) + " potential intersection locations...")
+    print("Analyzing " + str(len(location_groups)) + " potential endpoint locations...")
     
     # Convert to list to avoid iteration issues
     location_items = list(location_groups.items())
@@ -65,37 +67,31 @@ def find_boundary_barx_barz_intersections(instances):
         # Count bars by type at this location
         bar_counts = count_bars_by_type(bars_at_location)
         
-        # Check if this location has intersecting bars (BarX AND BarZ present)
-        has_barx = (bar_counts['BarX-a'] + bar_counts['BarX-b']) > 0
-        has_barz = (bar_counts['BarZ-a'] + bar_counts['BarZ-b']) > 0
+        # Check if this is an internal intersection (to EXCLUDE)
+        # Internal intersection criteria: 2+ BarX-a AND 2+ BarX-b AND 2+ BarZ-a AND 2+ BarZ-b
+        is_internal = (bar_counts['BarX-a'] >= 2 and bar_counts['BarX-b'] >= 2 and
+                      bar_counts['BarZ-a'] >= 2 and bar_counts['BarZ-b'] >= 2)
         
-        if has_barx and has_barz:
-            # We have both bar types - check if it's boundary (not internal)
+        if not is_internal:
+            # This is a boundary endpoint - process regardless of bar type combinations
             total_bars = (bar_counts['BarX-a'] + bar_counts['BarX-b'] + 
                          bar_counts['BarZ-a'] + bar_counts['BarZ-b'])
             
-            # Internal intersection criteria (to EXCLUDE):
-            # Internal = 2+ BarX-a AND 2+ BarX-b AND 2+ BarZ-a AND 2+ BarZ-b
-            is_internal = (bar_counts['BarX-a'] >= 2 and bar_counts['BarX-b'] >= 2 and
-                          bar_counts['BarZ-a'] >= 2 and bar_counts['BarZ-b'] >= 2)
+            print("Boundary endpoint at " + str(location) + ":")
+            print("  BarX-a: " + str(bar_counts['BarX-a']) + ", BarX-b: " + str(bar_counts['BarX-b']))
+            print("  BarZ-a: " + str(bar_counts['BarZ-a']) + ", BarZ-b: " + str(bar_counts['BarZ-b']))
+            print("  Total: " + str(total_bars) + " bars")
+            print("  -> BOUNDARY endpoint (not internal)")
             
-            if not is_internal:
-                # This is a boundary intersection
-                print("Boundary intersection at " + str(location) + ":")
-                print("  BarX-a: " + str(bar_counts['BarX-a']) + ", BarX-b: " + str(bar_counts['BarX-b']))
-                print("  BarZ-a: " + str(bar_counts['BarZ-a']) + ", BarZ-b: " + str(bar_counts['BarZ-b']))
-                print("  Total: " + str(total_bars) + " bars")
-                print("  -> BOUNDARY intersection (< 2 bars of some type)")
-                
-                boundary_intersections.append((location, bars_at_location, bar_counts))
-            else:
-                print("Skipping internal intersection at " + str(location) + " (4+ bars per type)")
+            boundary_endpoints.append((location, bars_at_location, bar_counts))
+        else:
+            print("Skipping internal intersection at " + str(location) + " (2+ bars per type)")
     
-    return boundary_intersections
+    return boundary_endpoints
 
-def group_bars_by_vertices(instances):
+def group_bars_by_endpoints_only(instances):
     """
-    Group bars by their vertex locations (start, midpoint, end).
+    Group bars by their vertex locations, but ONLY endpoints (start/end), NO midpoints.
     Returns dict: {location: [(instance, vertex, vertex_type), ...]}
     """
     location_groups = {}
@@ -110,14 +106,13 @@ def group_bars_by_vertices(instances):
                 if len(vertices) < 3:
                     continue
                 
-                # Check key vertices: start (0), midpoint (2), end (-1)
-                key_vertices = [
+                # ONLY check endpoints: start (0) and end (-1) - NO midpoint
+                endpoint_vertices = [
                     (vertices[0], 'start'),
-                    (vertices[2], 'midpoint'),  
                     (vertices[-1], 'end')
                 ]
                 
-                for vertex, vertex_type in key_vertices:
+                for vertex, vertex_type in endpoint_vertices:
                     coord = vertex.pointOn[0]
                     # Round coordinates to group nearby points
                     rounded_coord = (round(coord[0], 1), round(coord[1], 1), round(coord[2], 1))
@@ -156,70 +151,49 @@ def count_bars_by_type(bars_at_location):
     
     return counts
 
-def create_boundary_rps_and_wires(assembly, boundary_intersections):
+def create_boundary_rps_and_wires_all_endpoints(assembly, boundary_endpoints):
     """
-    Create RPs and separate wires for boundary intersections.
+    Create RPs and separate wires for ALL boundary endpoints - UPDATED with modular tracking.
+    Creates wires based on what bar types are actually present.
     Returns (rp_count, wire_x_count, wire_z_count).
     """
-    rp_count = 0
-    wire_x_count = 0
-    wire_z_count = 0
     
-    # Store RP and wire data for organized creation
-    boundary_rps = []
+    # Get module dimensions from script a parameters  
+    dx = 221
+    dy = 127.5
+    dz = 221
     
-    # First pass: Create all RPs
-    print("Creating Reference Points...")
-    for i, (location, bars_at_location, bar_counts) in enumerate(boundary_intersections):
-        
-        # Create descriptive RP name based on coordinates
-        x_coord = int(round(location[0]))
-        y_coord = int(round(location[1]))
-        z_coord = int(round(location[2]))
-        rp_name = "RP_Boundary_X" + str(x_coord) + "_Y" + str(y_coord) + "_Z" + str(z_coord)
-        
-        print("")
-        print("Creating RP " + str(i+1) + ": " + rp_name)
-        print("  Location: " + str(location))
-        
-        try:
-            rp_feature = assembly.ReferencePoint(point=location)
-            rp = assembly.referencePoints[rp_feature.id]
-            rp_count += 1
-            
-            print("  RP created successfully")
-            
-            # Find representative bars
-            barx_rep = find_representative_bar(bars_at_location, 'BarX')
-            barz_rep = find_representative_bar(bars_at_location, 'BarZ')
-            
-            # Store for wire creation
-            boundary_rps.append((i+1, rp, location, barx_rep, barz_rep))
-            
-        except Exception as e:
-            print("  Error creating RP: " + str(e))
+    print("Creating boundary RPs with modular coordinate system...")
+    print("Module dimensions: dx={}, dy={}, dz={}".format(dx, dy, dz))
     
-    # Second pass: Create BarX wires first
+    # Use the modular RP creation function
+    rp_count, wire_x_count, wire_z_count, created_rps = create_boundary_rps_and_wires_modular(
+        assembly, boundary_endpoints, dx, dy, dz
+    )
+    
+    # Store created RPs info for potential later use
     print("")
-    print("Creating RP-to-BarX wires...")
-    for rp_index, rp, location, barx_rep, barz_rep in boundary_rps:
-        if barx_rep:
-            wire_name = "Boundary_X_" + str(rp_index)
-            if create_rp_to_bar_wire(assembly, rp, barx_rep, location, wire_name, "BarX"):
-                wire_x_count += 1
-        else:
-            print("  Warning: No BarX representative found for RP " + str(rp_index))
+    print("=== BOUNDARY RP CREATION SUMMARY ===")
+    print("RPs created: {}".format(rp_count))
+    print("BarX wires created: {}".format(wire_x_count))
+    print("BarZ wires created: {}".format(wire_z_count))
     
-    # Third pass: Create BarZ wires second
+    # Show some examples of created modular sets
+    print("Example modular sets created:")
+    for rp, module_coords, set_name, location, bar_counts, barx_rep, barz_rep in created_rps[:3]:
+        print("  {} -> module {}".format(set_name, module_coords))
+    if len(created_rps) > 3:
+        print("  ... and {} more".format(len(created_rps) - 3))
+    
+    # Show ground level RPs found
+    ground_rps = [(set_name, module_coords) for rp, module_coords, set_name, location, bar_counts, barx_rep, barz_rep 
+                  in created_rps if module_coords[1] == 0]
     print("")
-    print("Creating RP-to-BarZ wires...")
-    for rp_index, rp, location, barx_rep, barz_rep in boundary_rps:
-        if barz_rep:
-            wire_name = "Boundary_Z_" + str(rp_index)
-            if create_rp_to_bar_wire(assembly, rp, barz_rep, location, wire_name, "BarZ"):
-                wire_z_count += 1
-        else:
-            print("  Warning: No BarZ representative found for RP " + str(rp_index))
+    print("Ground level RPs (y=0): {}".format(len(ground_rps)))
+    for set_name, module_coords in ground_rps[:5]:
+        print("  {} -> module {}".format(set_name, module_coords))
+    if len(ground_rps) > 5:
+        print("  ... and {} more".format(len(ground_rps) - 5))
     
     return rp_count, wire_x_count, wire_z_count
 
@@ -236,14 +210,15 @@ def find_representative_bar(bars_at_location, bar_type):
             candidates.append((bar_instance, vertex, vertex_type))
     
     if candidates:
-        # Prefer midpoint connections, then start, then end
-        midpoint_candidates = [c for c in candidates if c[2] == 'midpoint']
-        if midpoint_candidates:
-            return midpoint_candidates[0][:2]  # Return (instance, vertex)
-        
+        # Since we're only dealing with endpoints now, prefer start over end
         start_candidates = [c for c in candidates if c[2] == 'start']
         if start_candidates:
-            return start_candidates[0][:2]
+            return start_candidates[0][:2]  # Return (instance, vertex)
+        
+        # Fallback to end points
+        end_candidates = [c for c in candidates if c[2] == 'end']
+        if end_candidates:
+            return end_candidates[0][:2]
         
         # Fallback to any candidate
         return candidates[0][:2]
@@ -279,7 +254,7 @@ def create_rp_to_bar_wire(assembly, rp, bar_info, rp_location, wire_name, bar_ty
         print("    Error creating wire " + wire_name + ": " + str(e))
         return False
 
-def verify_boundary_joints():
+def verify_boundary_supports():
     """
     Verify the created boundary RPs and wires.
     """
@@ -307,20 +282,35 @@ def verify_boundary_joints():
             boundary_z_wires.append(feature_name)
     
     print("Boundary BarX wires: " + str(len(boundary_x_wires)))
-    for wire_name in boundary_x_wires:
+    for wire_name in boundary_x_wires[:5]:  # Show first 5
         print("  - " + wire_name)
+    if len(boundary_x_wires) > 5:
+        print("  ... and " + str(len(boundary_x_wires) - 5) + " more")
     
     print("Boundary BarZ wires: " + str(len(boundary_z_wires)))
-    for wire_name in boundary_z_wires:
+    for wire_name in boundary_z_wires[:5]:  # Show first 5
         print("  - " + wire_name)
+    if len(boundary_z_wires) > 5:
+        print("  ... and " + str(len(boundary_z_wires) - 5) + " more")
 
 # Main execution
 if __name__ == "__main__":
     try:
-        create_boundary_barx_barz_joints()
-        verify_boundary_joints()
+        create_boundary_supports_all_endpoints()
+        verify_boundary_supports()
         
     except Exception as e:
         print("Error in main execution: " + str(e))
         import traceback
         traceback.print_exc()
+        print("")
+    print("=== MODULAR RP MANAGEMENT READY ===")
+    print("Individual access: Use sets named 'RP_x#_y#_z#' where #=module coordinates")
+    print("Purpose sets: Create programmatically when needed")
+    print("")
+    print("Available utility functions:")
+    print("- create_ground_supports_set(assembly)")
+    print("- create_load_application_set(assembly)")  
+    print("- create_cable_attachment_set(assembly)")
+    print("- get_rp_by_module_coords(assembly, mod_x, mod_y, mod_z)")
+    print("- find_rps_in_module_range(assembly, x_range, y_range, z_range)")
