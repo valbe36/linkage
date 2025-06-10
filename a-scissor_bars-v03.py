@@ -24,9 +24,9 @@ material_name = 'Steel_355'
 profile_name = 'RHS_48e3_Profile'
 
 # Updated Geometry Parameters (30 degree slope)
-dx = 221    # spacing perpendicular to slope (x-direction)
-dy = 127.5  # height increment per level (y-direction)  
-dz = 221    # spacing along slope (z-direction)
+dx = 2.21    # spacing perpendicular to slope (x-direction)
+dy = 1.275  # height increment per level (y-direction)  
+dz = 2.21    # spacing along slope (z-direction)
 
 # Grandstand dimensions
 n_x = 6     # BarX: creates 7 rows (0-6), BarZ: creates max 6 rows (1-6) and 6 modules per row (0-5)
@@ -402,51 +402,51 @@ def create_grandstand_instances(assembly_obj, model_obj, n_x, n_y, n_z_base, ste
     inst_count_z_created = 0
     inst_count_z_skipped = 0
     
-for bar_name in bars_z:
-    if bar_name not in model_obj.parts:
-        warnings.warn("Part '{}' not found. Skipping instances for this part.".format(bar_name))
-        success = False
-        continue
-    p = model_obj.parts[bar_name]
+    for bar_name in bars_z:
+        if bar_name not in model_obj.parts:
+            warnings.warn("Part '{}' not found. Skipping instances for this part.".format(bar_name))
+            success = False
+            continue
+        p = model_obj.parts[bar_name]
 
-    try:
-        for iy in range(n_y + 1):  # Height levels (0,1,2,3,4,5) - INCLUDING TOP LEVEL for BarZ
+        try:
+            for iy in range(n_y + 1):  # Height levels (0,1,2,3,4,5) - INCLUDING TOP LEVEL for BarZ
             # Calculate modules per row (decreases with height along z)
-            modules_per_row = max(1, n_x - iy)  # 6,5,4,3,2,1
-    
-            print("    Level {}: {} rows, {} modules per row".format(iy, n_x, modules_per_row))
-    
-            for ix in range(1, n_x + 1):  # Always same number of rows (1-6) - CONSTANT in x
-                for iz in range(modules_per_row):  # Decreasing modules per row - DECREASING in z
+                modules_per_row = max(1, n_x - iy)  # 6,5,4,3,2,1
+            
+                print("    Level {}: {} rows, {} modules per row".format(iy, n_x, modules_per_row))
+            
+                for ix in range(n_x):  # Always same number of rows (1-6) - CONSTANT in x
+                    for iz in range(modules_per_row):  # Decreasing modules per row - DECREASING in z
                     # Updated naming convention
-                    inst_name = "{}_x{}_y{}_z{}".format(bar_name, ix, iy, iz)
-                    instance_keys_generated.append(inst_name)
+                        inst_name = "{}_x{}_y{}_z{}".format(bar_name, ix, iy, iz)
+                        instance_keys_generated.append(inst_name)
 
-                    if inst_name in assembly_obj.instances:
-                        inst_count_z_skipped += 1
-                        continue
+                        if inst_name in assembly_obj.instances:
+                            inst_count_z_skipped += 1
+                            continue
 
-                    try:
-                        inst = assembly_obj.Instance(name=inst_name, part=p, dependent=ON)
-                        inst_count_z_created += 1
+                        try:
+                            inst = assembly_obj.Instance(name=inst_name, part=p, dependent=ON)
+                            inst_count_z_created += 1
                         
                         # Calculate translation vector  
-                        x_pos = ix * step_x
-                        y_pos = iy * step_y
-                        z_pos = iz * step_z
+                            x_pos = ix * step_x
+                            y_pos = iy * step_y
+                            z_pos = iz * step_z
                         
-                        if x_pos != 0.0 or y_pos != 0.0 or z_pos != 0.0:
-                            inst.translate(vector=(x_pos, y_pos, z_pos))
+                            if x_pos != 0.0 or y_pos != 0.0 or z_pos != 0.0:
+                                inst.translate(vector=(x_pos, y_pos, z_pos))
                             
-                    except Exception as e_inst:
-                        warnings.warn("Error creating/translating instance '{}': {}".format(inst_name, e_inst))
-                        print(traceback.format_exc())
-                        success = False
-                        if inst_name in assembly_obj.instances:
-                            try: del assembly_obj.instances[inst_name]
-                            except: pass
-                                
-    except Exception as e_loop_z:
+                        except Exception as e_inst:
+                            warnings.warn("Error creating/translating instance '{}': {}".format(inst_name, e_inst))
+                            print(traceback.format_exc())
+                            success = False
+                            if inst_name in assembly_obj.instances:
+                                try: del assembly_obj.instances[inst_name]
+                                except: pass
+                            
+        except Exception as e_loop_z:
             warnings.warn("Error during instance creation loop for BarZ part '{}': {}".format(bar_name, e_loop_z))
             print(traceback.format_exc())
             success = False
@@ -467,8 +467,8 @@ for bar_name in bars_z:
     
     print("BarZ instances:")
     for iy in range(n_y + 1):
-        num_rows = max(1, n_x - iy)
-        print("  Level {}: {} rows x 6 modules = {} instances per part".format(iy, num_rows, num_rows * 6))
+        modules_per_row = max(1, n_x - iy)
+        print("  Level {}: {} rows x {} modules = {} instances per part".format(iy, n_x, modules_per_row))
     
     if not success: 
         warnings.warn("Issues encountered during instance creation.")

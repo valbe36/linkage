@@ -205,7 +205,7 @@ def group_bars_by_vertices(instances):
     Returns dict: {location: [(instance, vertex, vertex_type), ...]}
     """
     location_groups = {}
-    tolerance = 0.1
+    tolerance = 0.01
     
     # Convert instances to list to avoid Abaqus collection issues
     instance_list = list(instances.values())
@@ -270,9 +270,9 @@ def create_rps_and_wires(assembly, internal_intersections):
     """
     
     # Get module dimensions from script a parameters
-    dx = 221
-    dy = 127.5
-    dz = 221
+    dx = 2.21
+    dy = 1.275
+    dz = 2.21
     
     print("Creating internal RPs with modular coordinate system...")
     print("Module dimensions: dx={}, dy={}, dz={}".format(dx, dy, dz))

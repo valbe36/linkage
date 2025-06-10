@@ -276,9 +276,9 @@ def create_boundary_rps_and_wires_all_endpoints(assembly, boundary_endpoints):
     """
     
     # Get module dimensions from script a parameters  
-    dx = 221
-    dy = 127.5
-    dz = 221
+    dx = 2.21
+    dy = 1.275
+    dz = 2.21
     
     print("Creating boundary RPs with modular coordinate system...")
     print("Module dimensions: dx={}, dy={}, dz={}".format(dx, dy, dz))
