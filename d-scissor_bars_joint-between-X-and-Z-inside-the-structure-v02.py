@@ -4,6 +4,112 @@ from abaqusConstants import *
 import regionToolset
 import math
 
+# ============================================================================
+# MODULAR RP FUNCTIONS
+# ============================================================================
+
+def convert_location_to_module_coords(location, dx, dy, dz):
+    """
+    Convert absolute coordinates to module coordinates.
+    Returns (module_x, module_y, module_z)
+    """
+    module_x = int(round(location[0] / dx))
+    module_y = int(round(location[1] / dy)) 
+    module_z = int(round(location[2] / dz))
+    
+    return module_x, module_y, module_z
+
+def create_rp_with_modular_tracking(assembly, location, dx, dy, dz, rp_type=""):
+    """
+    Create RP and immediately create its modular set.
+    
+    Parameters:
+    - assembly: Abaqus assembly
+    - location: (x, y, z) absolute coordinates
+    - dx, dy, dz: module dimensions
+    - rp_type: "Internal" or "Boundary" for descriptive naming
+    
+    Returns: (rp_feature, rp_object, module_coords, set_name)
+    """
+    
+    # Convert to module coordinates
+    mod_x, mod_y, mod_z = convert_location_to_module_coords(location, dx, dy, dz)
+    
+    # Create RP
+    rp_feature = assembly.ReferencePoint(point=location)
+    rp = assembly.referencePoints[rp_feature.id]
+    
+    # Create modular set name
+    set_name = "RP_x{}_y{}_z{}".format(mod_x, mod_y, mod_z)
+    
+    # Handle potential duplicates (if RP already exists at this module location)
+    base_set_name = set_name
+    counter = 1
+    while set_name in assembly.sets:
+        set_name = "{}_{}".format(base_set_name, counter)
+        counter += 1
+    
+    # Create set
+    try:
+        assembly.Set(referencePoints=(rp,), name=set_name)
+        print("  Created RP set: {} at module ({},{},{})".format(set_name, mod_x, mod_y, mod_z))
+        if rp_type:
+            print("    Type: {} RP".format(rp_type))
+    except Exception as e:
+        print("  Warning: Could not create set {}: {}".format(set_name, e))
+    
+    return rp_feature, rp, (mod_x, mod_y, mod_z), set_name
+
+def create_rps_and_wires_internal_modular(assembly, internal_intersections, dx, dy, dz):
+    """
+    Create RPs and wires for internal intersections with modular tracking.
+    Returns (rp_count, wire_count, created_rps)
+    """
+    rp_count = 0
+    wire_count = 0
+    created_rps = []  # Track created RPs: (rp, module_coords, set_name, location)
+    
+    for i, (location, bars_at_location, bar_counts) in enumerate(internal_intersections):
+        
+        print("")
+        print("Creating internal RP {}:".format(i+1))
+        print("  Location: {}".format(location))
+        
+        # Create RP with modular tracking
+        try:
+            rp_feature, rp, module_coords, set_name = create_rp_with_modular_tracking(
+                assembly, location, dx, dy, dz, "Internal"
+            )
+            rp_count += 1
+            
+            # Track the created RP
+            created_rps.append((rp, module_coords, set_name, location))
+            
+            # Find representative bars for wires
+            barx_rep = find_representative_bar(bars_at_location, 'BarX')
+            barz_rep = find_representative_bar(bars_at_location, 'BarZ')
+            
+            # Create wire RP -> BarX
+            if barx_rep:
+                wire_name_x = "UniversalJoint_BarX_{}".format(i+1)
+                if create_rp_to_bar_wire(assembly, rp, barx_rep, location, wire_name_x, "BarX"):
+                    wire_count += 1
+            
+            # Create wire RP -> BarZ  
+            if barz_rep:
+                wire_name_z = "UniversalJoint_BarZ_{}".format(i+1)
+                if create_rp_to_bar_wire(assembly, rp, barz_rep, location, wire_name_z, "BarZ"):
+                    wire_count += 1
+                    
+        except Exception as e:
+            print("  Error creating internal RP: {}".format(e))
+    
+    return rp_count, wire_count, created_rps
+
+# ============================================================================
+# MAIN FUNCTIONS (UPDATED)
+# ============================================================================
+
 def create_internal_universal_joints():
     """
     Create RPs and universal joint wires at internal intersection points only.
@@ -158,7 +264,6 @@ def count_bars_by_type(bars_at_location):
     return counts
 
 def create_rps_and_wires(assembly, internal_intersections):
- 
     """
     Create RPs and wires for internal intersections - UPDATED with modular tracking.
     Returns (rp_count, wire_count).
@@ -191,7 +296,6 @@ def create_rps_and_wires(assembly, internal_intersections):
         print("  ... and {} more".format(len(created_rps) - 3))
     
     return rp_count, wire_count
-
 
 def find_representative_bar(bars_at_location, bar_type):
     """
@@ -288,24 +392,123 @@ def verify_universal_joints():
     if len(universal_barz_wires) > 5:
         print("  ... and " + str(len(universal_barz_wires) - 5) + " more")
 
-# Main execution
+# ============================================================================
+# UTILITY FUNCTIONS FOR MODULAR RP ACCESS
+# ============================================================================
+
+def get_rp_by_module_coords(assembly, mod_x, mod_y, mod_z):
+    """Get RP by module coordinates."""
+    set_name = "RP_x{}_y{}_z{}".format(mod_x, mod_y, mod_z)
+    
+    if set_name in assembly.sets:
+        try:
+            return assembly.sets[set_name].referencePoints[0]
+        except:
+            return None
+    return None
+
+def find_rps_in_module_range(assembly, x_range=None, y_range=None, z_range=None):
+    """Find RPs within specific module coordinate ranges."""
+    
+    matching_rps = []
+    
+    for set_name in assembly.sets.keys():
+        if set_name.startswith('RP_x') and '_y' in set_name and '_z' in set_name:
+            try:
+                parts = set_name.split('_')
+                if len(parts) >= 3:
+                    mod_x = int(parts[1][1:])  # Remove 'x'
+                    mod_y = int(parts[2][1:])  # Remove 'y'
+                    mod_z = int(parts[3][1:])  # Remove 'z'
+                    
+                    # Check ranges
+                    x_ok = (x_range is None) or (x_range[0] <= mod_x <= x_range[1])
+                    y_ok = (y_range is None) or (y_range[0] <= mod_y <= y_range[1])
+                    z_ok = (z_range is None) or (z_range[0] <= mod_z <= z_range[1])
+                    
+                    if x_ok and y_ok and z_ok:
+                        rp_set = assembly.sets[set_name]
+                        if hasattr(rp_set, 'referencePoints'):
+                            matching_rps.extend(rp_set.referencePoints)
+                            
+            except (ValueError, IndexError):
+                continue
+    
+    return list(set(matching_rps))  # Remove duplicates
+
+def list_modular_rps(assembly):
+    """List all modular RPs for verification."""
+    
+    modular_sets = []
+    for set_name in assembly.sets.keys():
+        if set_name.startswith('RP_x') and '_y' in set_name and '_z' in set_name:
+            modular_sets.append(set_name)
+    
+    print("Modular RP sets found: {}".format(len(modular_sets)))
+    
+    # Group by level
+    by_level = {}
+    for set_name in sorted(modular_sets):
+        try:
+            mod_y = int(set_name.split('_')[2][1:])  # Extract y coordinate
+            if mod_y not in by_level:
+                by_level[mod_y] = []
+            by_level[mod_y].append(set_name)
+        except:
+            continue
+    
+    for level in sorted(by_level.keys()):
+        print("  Level {}: {} RPs".format(level, len(by_level[level])))
+        for set_name in by_level[level][:3]:  # Show first 3
+            print("    - {}".format(set_name))
+        if len(by_level[level]) > 3:
+            print("    ... and {} more".format(len(by_level[level]) - 3))
+
+def create_ground_supports_set(assembly):
+    """Create a set containing all ground-level RPs (module y=0)."""
+    
+    print("Creating ground supports set...")
+    
+    # Find all RPs at ground level (module y=0)
+    ground_rps = find_rps_in_module_range(assembly, y_range=(0, 0))
+    
+    if len(ground_rps) > 0:
+        set_name = "RPs_GroundSupports"
+        try:
+            assembly.Set(referencePoints=tuple(ground_rps), name=set_name)
+            print("Created ground supports set '{}' with {} RPs".format(set_name, len(ground_rps)))
+            return set_name
+        except Exception as e:
+            print("Error creating ground supports set: {}".format(e))
+            return None
+    else:
+        print("No ground-level RPs found")
+        return None
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
 if __name__ == "__main__":
     try:
         create_internal_universal_joints()
         verify_universal_joints()
         
+        print("")
+        print("=== MODULAR RP MANAGEMENT READY ===")
+        print("Individual access: Use sets named 'RP_x#_y#_z#' where #=module coordinates")
+        print("Purpose sets: Create programmatically when needed")
+        print("")
+        print("Available utility functions:")
+        print("- create_ground_supports_set(assembly)")
+        print("- get_rp_by_module_coords(assembly, mod_x, mod_y, mod_z)")
+        print("- find_rps_in_module_range(assembly, x_range, y_range, z_range)")
+        
+        # Show summary of created RPs
+        assembly = mdb.models['Model-1'].rootAssembly
+        list_modular_rps(assembly)
+        
     except Exception as e:
         print("Error in main execution: " + str(e))
         import traceback
         traceback.print_exc()
-        print("")
-    print("=== MODULAR RP MANAGEMENT READY ===")
-    print("Individual access: Use sets named 'RP_x#_y#_z#' where #=module coordinates")
-    print("Purpose sets: Create programmatically when needed")
-    print("")
-    print("Available utility functions:")
-    print("- create_ground_supports_set(assembly)")
-    print("- create_load_application_set(assembly)")  
-    print("- create_cable_attachment_set(assembly)")
-    print("- get_rp_by_module_coords(assembly, mod_x, mod_y, mod_z)")
-    print("- find_rps_in_module_range(assembly, x_range, y_range, z_range)")

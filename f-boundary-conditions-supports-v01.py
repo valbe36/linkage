@@ -2,13 +2,11 @@
 from abaqus import *
 from abaqusConstants import *
 import regionToolset
-import math
 
 def apply_ground_boundary_conditions():
     """
-    Find ground-level RPs using existing sets and apply boundary conditions:
-    - Translations (x,y,z): FIXED
-    - Rotations (rx,ry,rz): FREE
+    Apply pinned boundary conditions to all RPs at ground level (module y=0).
+    Pinned = translations fixed (3 DOFs), rotations free.
     """
     
     # Get model and assembly references
@@ -16,229 +14,48 @@ def apply_ground_boundary_conditions():
     assembly = model.rootAssembly
     
     print("=== GROUND BOUNDARY CONDITIONS ===")
+    print("Applying pinned supports to all ground-level RPs (module y=0)")
     print("")
-    print("Step 1: Looking for ground-level RPs in existing sets...")
     
-    # Find ground-level RPs from existing sets
-    ground_rps = find_ground_rps_from_sets(assembly)
-    
-    if len(ground_rps) == 0:
-        print("No ground-level RPs found in sets. Trying alternative approaches...")
-        ground_rps = try_alternative_approaches(model, assembly)
+    # Find all ground-level RPs using modular coordinate system
+    ground_rps = find_rps_in_module_range(assembly, y_range=(0, 0))
     
     if len(ground_rps) == 0:
-        print("No ground-level RPs found. Please check if RPs exist and have been properly set up.")
-        list_existing_sets_and_bcs(model, assembly)
-        return
-    
-    print("Found " + str(len(ground_rps)) + " ground-level RPs")
-    
-    print("")
-    print("Step 2: Creating set and applying boundary conditions...")
-    
-    # Apply boundary conditions
-    bc_success = create_and_apply_ground_bc(model, assembly, ground_rps)
-    
-    print("")
-    print("=== SUMMARY ===")
-    print("Ground-level RPs found: " + str(len(ground_rps)))
-    print("Boundary conditions applied: " + ("SUCCESS" if bc_success else "FAILED"))
-    print("")
-    if bc_success:
-        print("Ground support boundary conditions:")
-        print("- Translations (u1, u2, u3): FIXED")
-        print("- Rotations (ur1, ur2, ur3): FREE")
-
-def find_ground_rps_from_sets(assembly):
-    """
-    Find ground-level RPs by examining existing sets.
-    Looks for coordinate-based and descriptive set names.
-    """
-    ground_rps = []
-    
-    print("Scanning existing sets for ground-level RPs...")
-    
-    all_sets = list(assembly.sets.keys())
-    print("Total sets in assembly: " + str(len(all_sets)))
-    
-    # Method 1: Look for coordinate-based sets (Y=0 or near 0)
-    coord_based_sets = []
-    for set_name in all_sets:
-        if set_name.startswith('RP_X') and '_Y' in set_name and '_Z' in set_name:
-            coord_based_sets.append(set_name)
-    
-    print("Found " + str(len(coord_based_sets)) + " coordinate-based RP sets")
-    
-    # Check coordinate-based sets for ground level (Y near 0)
-    for set_name in coord_based_sets:
-        try:
-            # Extract Y coordinate from set name like "RP_X331_Y0_Z884"
-            y_part = set_name.split('_Y')[1].split('_Z')[0]
-            y_value = int(y_part)
-            
-            # Check if Y coordinate indicates ground level (within ±5 for tolerance)
-            if abs(y_value) <= 5:
-                rp_set = assembly.sets[set_name]
-                if hasattr(rp_set, 'referencePoints') and len(rp_set.referencePoints) > 0:
-                    for rp in rp_set.referencePoints:
-                        if rp not in ground_rps:
-                            ground_rps.append(rp)
-                    print("  Found ground RP(s) in set: " + set_name + " (Y=" + str(y_value) + ")")
-                
-        except (ValueError, IndexError):
-            # Skip sets that don't match the expected naming pattern
-            continue
-    
-    # Method 2: Look for descriptive sets mentioning ground/lower/y0
-    ground_keywords = ['Ground', 'LowerEnd', '_y0_', 'Y0']
-    descriptive_sets = []
-    
-    for set_name in all_sets:
-        for keyword in ground_keywords:
-            if keyword in set_name:
-                descriptive_sets.append(set_name)
-                break
-    
-    print("Found " + str(len(descriptive_sets)) + " descriptive sets with ground keywords")
-    
-    # Check descriptive sets
-    for set_name in descriptive_sets:
-        try:
-            rp_set = assembly.sets[set_name]
-            if hasattr(rp_set, 'referencePoints') and len(rp_set.referencePoints) > 0:
-                for rp in rp_set.referencePoints:
-                    if rp not in ground_rps:
-                        ground_rps.append(rp)
-                print("  Found ground RP(s) in set: " + set_name)
-        except:
-            print("  Error reading set: " + set_name)
-    
-    print("Total ground RPs found from sets: " + str(len(ground_rps)))
-    return ground_rps
-
-def try_alternative_approaches(model, assembly):
-    """
-    Alternative approaches to find ground RPs if sets don't work.
-    """
-    ground_rps = []
-    
-    print("Trying alternative approaches...")
-    
-    # Method 1: Check if there's an existing ground boundary condition we can use
-    existing_ground_bc = find_existing_ground_bc(model)
-    if existing_ground_bc:
-        print("Found existing ground BC: " + existing_ground_bc)
-        # Try to get RPs from existing BC
-        try:
-            bc = model.boundaryConditions[existing_ground_bc]
-            if hasattr(bc, 'region') and hasattr(bc.region, 'referencePoints'):
-                ground_rps = list(bc.region.referencePoints)
-                print("Extracted " + str(len(ground_rps)) + " RPs from existing BC")
-        except:
-            print("Could not extract RPs from existing BC")
-    
-    # Method 2: Look for sets containing "Ground" regardless of exact name
-    if len(ground_rps) == 0:
-        for set_name in assembly.sets.keys():
-            if 'Ground' in set_name:
-                try:
-                    rp_set = assembly.sets[set_name]
-                    if hasattr(rp_set, 'referencePoints'):
-                        for rp in rp_set.referencePoints:
-                            if rp not in ground_rps:
-                                ground_rps.append(rp)
-                        print("Found RPs in ground set: " + set_name)
-                except:
-                    continue
-    
-    # Method 3: Manual coordinate specification based on grandstand geometry
-    if len(ground_rps) == 0:
-        print("Trying manual coordinate specification...")
-        ground_rps = find_rps_by_manual_coordinates(assembly)
-    
-    return ground_rps
-
-def find_existing_ground_bc(model):
-    """
-    Find existing boundary conditions that might be for ground support.
-    """
-    ground_bc_keywords = ['Ground', 'Pinned', 'Support', 'Base']
-    
-    for bc_name in model.boundaryConditions.keys():
-        for keyword in ground_bc_keywords:
-            if keyword in bc_name:
-                return bc_name
-    
-    return None
-
-def find_rps_by_manual_coordinates(assembly):
-    """
-    Manually specify coordinates where ground RPs should be based on grandstand geometry.
-    """
-    ground_rps = []
-    
-    print("Trying manual coordinate specification...")
-    
-    # Based on grandstand geometry from script a
-    dx = 221
-    dz = 221
-    n_x = 6
-    n_z_base = 5
-    
-    # Ground level coordinates to check (y=0)
-    test_coordinates = []
-    
-    # Add boundary coordinates at y=0
-    for ix in range(n_x + 1):  # 0 to 6
-        for iz in [0, n_z_base]:  # Front and back edges
-            x_pos = ix * dx
-            z_pos = iz * dz
-            test_coordinates.append((x_pos, 0.0, z_pos))
-    
-    # Add side coordinates
-    for iz in range(1, n_z_base):  # 1 to 4
-        for ix in [0, n_x]:  # Left and right edges
-            x_pos = ix * dx
-            z_pos = iz * dz
-            test_coordinates.append((x_pos, 0.0, z_pos))
-    
-    print("Testing " + str(len(test_coordinates)) + " manual coordinates...")
-    
-    # Test each coordinate
-    for coord in test_coordinates:
-        try:
-            rp = assembly.referencePoints.findAt((coord,))
-            if rp and rp not in ground_rps:
-                ground_rps.append(rp)
-                print("  Found RP at manual coordinate: " + str(coord))
-        except:
-            # No RP at this coordinate
-            pass
-    
-    print("Found " + str(len(ground_rps)) + " RPs using manual coordinates")
-    return ground_rps
-
-def create_and_apply_ground_bc(model, assembly, ground_rps):
-    """
-    Create a set with ground-level RPs and apply boundary conditions.
-    """
-    if len(ground_rps) == 0:
+        print("ERROR: No ground-level RPs found!")
+        print("Make sure scripts D and E have been run with modular RP system.")
+        list_available_rp_sets(assembly)
         return False
     
+    print("Found {} ground-level RPs".format(len(ground_rps)))
+    
+    # Create ground supports set
+    ground_set_name = "RPs_GroundSupports"
+    
     try:
-        # Create set name
-        ground_set_name = "Set_Ground_Support_RPs_New"
+        # Check if set already exists
+        if ground_set_name in assembly.sets:
+            print("Set '{}' already exists, will replace it".format(ground_set_name))
+            del assembly.sets[ground_set_name]
         
         # Create new set
-        print("Creating set: " + ground_set_name)
         assembly.Set(referencePoints=tuple(ground_rps), name=ground_set_name)
-        print("Set created with " + str(len(ground_rps)) + " RPs")
+        print("Created set '{}' with {} RPs".format(ground_set_name, len(ground_rps)))
         
-        # Create boundary condition name
-        bc_name = "BC_Ground_Support_New"
+    except Exception as e:
+        print("ERROR creating ground RP set: {}".format(e))
+        return False
+    
+    # Apply boundary condition
+    bc_name = "BC_Ground_Pinned"
+    
+    try:
+        # Check if BC already exists
+        if bc_name in model.boundaryConditions:
+            print("Boundary condition '{}' already exists, will replace it".format(bc_name))
+            del model.boundaryConditions[bc_name]
         
-        # Apply boundary condition
-        print("Applying boundary condition: " + bc_name)
+        # Apply pinned boundary condition
+        print("Applying pinned boundary condition: {}".format(bc_name))
         
         model.DisplacementBC(
             name=bc_name,
@@ -256,98 +73,216 @@ def create_and_apply_ground_bc(model, assembly, ground_rps):
             localCsys=None
         )
         
-        print("Boundary condition applied successfully!")
+        print("")
+        print("=== SUCCESS ===")
+        print("Applied pinned supports to {} ground-level RPs:".format(len(ground_rps)))
+        print("  - Translations (u1, u2, u3): FIXED")
+        print("  - Rotations (ur1, ur2, ur3): FREE")
+        print("  - Set name: {}".format(ground_set_name))
+        print("  - BC name: {}".format(bc_name))
+        
         return True
         
     except Exception as e:
-        print("Error applying boundary conditions: " + str(e))
+        print("ERROR applying boundary condition: {}".format(e))
         return False
 
-def list_existing_sets_and_bcs(model, assembly):
-    """
-    List existing sets and boundary conditions for debugging.
-    """
+def find_rps_in_module_range(assembly, x_range=None, y_range=None, z_range=None):
+    """Find RPs within specific module coordinate ranges."""
+    
+    matching_rps = []
+    
+    for set_name in assembly.sets.keys():
+        if set_name.startswith('RP_x') and '_y' in set_name and '_z' in set_name:
+            try:
+                parts = set_name.split('_')
+                if len(parts) >= 3:
+                    mod_x = int(parts[1][1:])  # Remove 'x'
+                    mod_y = int(parts[2][1:])  # Remove 'y'
+                    mod_z = int(parts[3][1:])  # Remove 'z'
+                    
+                    # Check ranges
+                    x_ok = (x_range is None) or (x_range[0] <= mod_x <= x_range[1])
+                    y_ok = (y_range is None) or (y_range[0] <= mod_y <= y_range[1])
+                    z_ok = (z_range is None) or (z_range[0] <= mod_z <= z_range[1])
+                    
+                    if x_ok and y_ok and z_ok:
+                        rp_set = assembly.sets[set_name]
+                        if hasattr(rp_set, 'referencePoints'):
+                            # Each modular set should contain exactly one RP
+                            for rp in rp_set.referencePoints:
+                                matching_rps.append(rp)
+                                print("  Found ground RP in set: {}".format(set_name))
+                            
+            except (ValueError, IndexError):
+                continue
+    
+    return matching_rps
+
+def list_available_rp_sets(assembly):
+    """List available RP sets for debugging."""
+    
     print("")
-    print("=== DEBUGGING INFORMATION ===")
+    print("=== DEBUGGING: AVAILABLE RP SETS ===")
     
-    # List some sets
-    all_sets = list(assembly.sets.keys())
-    print("Sample sets in assembly (first 10):")
-    for set_name in all_sets[:10]:
-        print("  - " + set_name)
-    if len(all_sets) > 10:
-        print("  ... and " + str(len(all_sets) - 10) + " more sets")
+    # Count modular sets
+    modular_sets = [name for name in assembly.sets.keys() 
+                   if name.startswith('RP_x') and '_y' in name and '_z' in name]
     
-    # List boundary conditions
-    all_bcs = list(model.boundaryConditions.keys())
-    print("Boundary conditions in model:")
-    for bc_name in all_bcs:
-        print("  - " + bc_name)
+    print("Modular RP sets found: {}".format(len(modular_sets)))
     
-    # Look for likely ground sets
-    print("Sets containing 'ground' keywords:")
-    ground_keywords = ['Ground', 'LowerEnd', '_y0_', 'Y0', 'RP_X', 'Lower']
-    for set_name in all_sets:
-        for keyword in ground_keywords:
-            if keyword in set_name:
-                print("  - " + set_name)
-                break
+    if len(modular_sets) > 0:
+        # Group by level
+        by_level = {}
+        for set_name in modular_sets:
+            try:
+                mod_y = int(set_name.split('_')[2][1:])  # Extract y coordinate
+                if mod_y not in by_level:
+                    by_level[mod_y] = []
+                by_level[mod_y].append(set_name)
+            except:
+                continue
+        
+        print("RPs by level:")
+        for level in sorted(by_level.keys()):
+            print("  Level {}: {} RPs".format(level, len(by_level[level])))
+            if level == 0:  # Show ground level examples
+                for set_name in by_level[level][:3]:
+                    print("    - {}".format(set_name))
+                if len(by_level[level]) > 3:
+                    print("    ... and {} more".format(len(by_level[level]) - 3))
+    else:
+        print("No modular RP sets found!")
+        print("Please run scripts D and E with modular RP system first.")
+    
+    # Show some other sets for reference
+    other_sets = [name for name in assembly.sets.keys() 
+                 if not (name.startswith('RP_x') and '_y' in name and '_z' in name)]
+    
+    if len(other_sets) > 0:
+        print("")
+        print("Other sets in assembly (first 5):")
+        for set_name in other_sets[:5]:
+            print("  - {}".format(set_name))
+        if len(other_sets) > 5:
+            print("  ... and {} more".format(len(other_sets) - 5))
 
 def verify_ground_boundary_conditions():
-    """
-    Verify that boundary conditions were created correctly.
-    """
+    """Verify that boundary conditions were applied correctly."""
+    
     model = mdb.models['Model-1']
     assembly = model.rootAssembly
     
     print("")
     print("=== VERIFICATION ===")
     
-    # Count reference points
-    total_rps = len(assembly.referencePoints)
-    print("Total reference points in assembly: " + str(total_rps))
-    
-    # Check for new ground support sets
-    new_ground_sets = []
-    for set_name in assembly.sets.keys():
-        if 'Ground_Support' in set_name and 'New' in set_name:
-            new_ground_sets.append(set_name)
-    
-    print("New ground support sets: " + str(len(new_ground_sets)))
-    for set_name in new_ground_sets:
+    # Check ground support set
+    ground_set_name = "RPs_GroundSupports"
+    if ground_set_name in assembly.sets:
         try:
-            rp_set = assembly.sets[set_name]
-            rp_count = len(rp_set.referencePoints) if hasattr(rp_set, 'referencePoints') else 0
-            print("  - " + set_name + " (" + str(rp_count) + " RPs)")
+            ground_set = assembly.sets[ground_set_name]
+            rp_count = len(ground_set.referencePoints)
+            print("Ground support set '{}': {} RPs".format(ground_set_name, rp_count))
         except:
-            print("  - " + set_name + " (error reading)")
+            print("Ground support set '{}': error reading".format(ground_set_name))
+    else:
+        print("Ground support set '{}' not found!".format(ground_set_name))
     
-    # Check for new boundary conditions
-    new_bcs = []
-    for bc_name in model.boundaryConditions.keys():
-        if 'Ground_Support' in bc_name and 'New' in bc_name:
-            new_bcs.append(bc_name)
+    # Check boundary condition
+    bc_name = "BC_Ground_Pinned"
+    if bc_name in model.boundaryConditions:
+        try:
+            bc = model.boundaryConditions[bc_name]
+            print("Boundary condition '{}': applied in step '{}'".format(bc_name, bc.createStepName))
+            
+            # Try to get region info
+            try:
+                rp_count = len(bc.region.referencePoints)
+                print("  Applied to: {} RPs".format(rp_count))
+            except:
+                print("  Applied to: (could not count RPs)")
+                
+        except:
+            print("Boundary condition '{}': error reading".format(bc_name))
+    else:
+        print("Boundary condition '{}' not found!".format(bc_name))
     
-    print("New boundary conditions: " + str(len(new_bcs)))
-    for bc_name in new_bcs:
-        print("  - " + bc_name)
+    # Show total RPs in assembly
+    total_rps = len(assembly.referencePoints)
+    print("Total RPs in assembly: {}".format(total_rps))
 
-# Main execution
-if __name__ == "__main__":
+def show_ground_rp_details():
+    """Show details of ground-level RPs for verification."""
+    
+    assembly = mdb.models['Model-1'].rootAssembly
+    
+    print("")
+    print("=== GROUND RP DETAILS ===")
+    
+    # Find ground-level RP sets
+    ground_sets = []
+    for set_name in assembly.sets.keys():
+        if set_name.startswith('RP_x') and '_y0_' in set_name:  # y=0 module
+            ground_sets.append(set_name)
+    
+    print("Ground-level RP sets found: {}".format(len(ground_sets)))
+    
+    # Show first few with module coordinates
+    for set_name in sorted(ground_sets)[:10]:
+        try:
+            parts = set_name.split('_')
+            mod_x = int(parts[1][1:])  # Remove 'x'
+            mod_z = int(parts[3][1:])  # Remove 'z'
+            print("  {} -> module ({}, 0, {})".format(set_name, mod_x, mod_z))
+        except:
+            print("  {} -> (could not parse coordinates)".format(set_name))
+    
+    if len(ground_sets) > 10:
+        print("  ... and {} more".format(len(ground_sets) - 10))
+
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
+def main():
+    """Main function to apply ground boundary conditions."""
+    
+    print("GROUND BOUNDARY CONDITIONS SCRIPT")
+    print("=================================")
+    print("Applies pinned supports to all RPs at ground level (module y=0)")
+    print("")
+    
     try:
-        print("Starting ground boundary condition application...")
-        print("")
+        # Apply boundary conditions
+        success = apply_ground_boundary_conditions()
         
-        # Apply ground boundary conditions
-        apply_ground_boundary_conditions()
-        
-        # Verify results
-        verify_ground_boundary_conditions()
-        
-        print("")
-        print("Ground boundary condition script completed!")
+        if success:
+            # Verify results
+            verify_ground_boundary_conditions()
+            
+            # Show details
+            show_ground_rp_details()
+            
+            print("")
+            print("=== GROUND BOUNDARY CONDITIONS COMPLETED SUCCESSFULLY ===")
+            print("All ground-level RPs are now pinned:")
+            print("- Translations constrained (cannot move)")
+            print("- Rotations free (can rotate)")
+            print("Structure is ready for load application!")
+            
+        else:
+            print("")
+            print("=== GROUND BOUNDARY CONDITIONS FAILED ===")
+            print("Please check the errors above and ensure:")
+            print("1. Scripts D and E have been run successfully")
+            print("2. Modular RP sets exist in the assembly")
+            print("3. Model-1 exists and is accessible")
         
     except Exception as e:
-        print("Error in main execution: " + str(e))
+        print("Error in main execution: {}".format(e))
         import traceback
         traceback.print_exc()
+
+# Run the script
+if __name__ == "__main__":
+    main()
