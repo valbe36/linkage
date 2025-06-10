@@ -22,21 +22,21 @@ section_name = 'CHS33e7_t2e5'  # Already exists in model
 part_name = "ChordUpper"
 
 # Geometry Parameters (from script A)
-dx = 221    # x-direction spacing between instances
-dy = 127.5  # y-direction height increment  
-dz = 221    # z-direction - ChordUpper goes backwards (negative dz)
+dx = 2.21    # x-direction spacing between instances
+dy = 1.275  # y-direction height increment  
+dz = 2.21    # z-direction - ChordUpper goes backwards (negative dz)
 
 # ChordUpper specific parameters
 chord_start = (0.0, 0.0, 0.0)
 chord_end = (0.0, dy, -dz)  # (0, 127.5, -221) - same as ChordLower
 mesh_size = 0.1
-y_offset = 20.0  # Offset in +y direction
+y_offset = .20  # Offset in +y direction
 
 # Instance pattern parameters
 n_instances_x = 7  # 7 rows along x direction (x = 0, 221, 442, 663, 884, 1105, 1326)
 n_levels_y = 5     # 5 levels in y direction  
 spacing_x = dx     # 221 cm spacing between instances
-start_z = 1105     # Starting z position for first level
+start_z = 11.05     # Starting z position for first level
 
 # Define overall success flag
 overall_success = True
@@ -341,52 +341,7 @@ if chord_upper_part:
     if not instances_ok:
         overall_success = False
         warnings.warn("Failed to create ChordUpper instances")
-
-# Step 6: Create Sets for ChordLower and ChordUpper Instances
-print("\nStep 6: Create Sets for Chord Instances")
-
-def create_chord_instance_sets(assembly_obj):
-    """Create sets containing all ChordLower and ChordUpper instances."""
-    
-    print("  Creating instance sets...")
-    
-    
-    # Find all ChordUpper instances  
-    chord_upper_instances = []
-    for inst_name in assembly_obj.instances.keys():
-        if inst_name.startswith('ChordUpper_'):
-            chord_upper_instances.append(assembly_obj.instances[inst_name])
-    
-    print("  Found {} ChordUpper instances".format(len(chord_upper_instances)))
-    
-    sets_created = 0
-    
-    
-    # Create UpperChord set
-    if len(chord_upper_instances) > 0:
-        try:
-            upper_set_name = "UpperChord"
-            if upper_set_name in assembly_obj.sets:
-                print("  Set '{}' already exists, will replace it".format(upper_set_name))
-                del assembly_obj.sets[upper_set_name]
-            
-            assembly_obj.Set(instances=tuple(chord_upper_instances), name=upper_set_name)
-            print("  Created set '{}' with {} ChordUpper instances".format(upper_set_name, len(chord_upper_instances)))
-            sets_created += 1
-            
-        except Exception as e:
-            print("  Error creating UpperChord set: {}".format(e))
-    else:
-        print("  No ChordUpper instances found for set creation")
-    
-    return sets_created
-
-# Execute Step 6
-sets_created = create_chord_instance_sets(a)
-if sets_created > 0:
-    print("  SUCCESS: Created {} chord instance sets".format(sets_created))
-else:
-    print("  WARNING: No chord instance sets created")
+  
 
 # Step 7: Regenerate Assembly
 print("\nStep 7: Regenerating Assembly...")
