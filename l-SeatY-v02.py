@@ -9,9 +9,10 @@ import mesh
 import section
 import math
 
-# SeatY Script for Grandstand Seating Substructure
-# Creates complex 3D deformable wire frame with multiple segments
+# SeatY Script for Grandstand Seating Substructure - FIXED VERSION
+# Creates 3D deformable wire frame WITHOUT rotation
 # Cross-section: RHS_48e3 (already exists in model)
+# Long horizontal segments partitioned into 4 equal parts
 
 # Basic Setup: Model & Parameters
 model_name = 'Model-1'
@@ -27,46 +28,45 @@ dz = 2.21    # z-direction spacing
 # SeatY specific parameters
 mesh_size = 0.12
 
-# SeatY geometry points
+# SeatY geometry points - CORRECTED orientation (no rotation needed)
+# Original was in YZ plane, now in XZ plane to match final position
 points = [
-    (0.0, 0.0, 0.0),      # Point 1: Start
-    (0.0, 0.2, 0.0),      # Point 2: First vertical end
-    (0.0, 0.625, 0.0),    # Point 3: Second vertical end
-    (0.0, 0.2, 2.16),     # Point 4: End of first long segment
-    (0.0, 0.625, 2.16),   # Point 5: End of second long segment
-    (0.0, 0.0, 2.16),     # Point 6: Final point
+    (0.0, 0.0, 0.0),      # Point 0: Start
+    (0.0, 0.2, 0.0),      # Point 1: First horizontal end (was vertical)
+    (0, 0.625, 0.0),    # Point 2: Second horizontal end (was vertical)
+    (2.16, 0.2, 0),     # Point 3: End of first long segment
+    (2.16, 0.625, 0),   # Point 4: End of second long segment
+    (2.16, 0.0, 0),     # Point 5: Final point
 ]
 
 # Wire segments definition
 segments = [
-    (points[0], points[1]),  # Segment 1: (0,0,0) to (0,0.2,0)
-    (points[1], points[2]),  # Segment 2: (0,0.2,0) to (0,0.625,0)
-    (points[1], points[3]),  # Segment 3: (0,0.2,0) to (0,0.2,2.16) - LONG, needs partition
-    (points[2], points[4]),  # Segment 4: (0,0.625,0) to (0,0.625,2.16) - LONG, needs partition
-    (points[5], points[3]),  # Segment 5: (0,0,2.16) to (0,0.2,2.16)
-    (points[3], points[4]),  # Segment 6: (0,0.2,2.16) to (0,0.625,2.16)
+    (points[0], points[1]),  # Segment 1: (0,0,0) to (0.2,0,0) - SHORT
+    (points[1], points[2]),  # Segment 2: (0.2,0,0) to (0.625,0,0) - SHORT
+    (points[1], points[3]),  # Segment 3: (0.2,0,0) to (0.2,0,2.16) - LONG, needs partition
+    (points[2], points[4]),  # Segment 4: (0.625,0,0) to (0.625,0,2.16) - LONG, needs partition
+    (points[5], points[3]),  # Segment 5: (0,0,2.16) to (0.2,0,2.16) - SHORT
+    (points[3], points[4]),  # Segment 6: (0.2,0,2.16) to (0.625,0,2.16) - SHORT
 ]
 
-# Instance pattern parameters (finer spacing than LowerChord)
-n_instances_x = 6  # 6 rows along x direction (one less than before)
-n_levels_y = 16    # More levels due to finer y spacing (6 original levels * 3)
-n_levels_z = 15    # More levels due to finer z spacing (5 original levels * 3)
+# Instance pattern parameters (same as before but NO rotation)
+n_instances_x = 6  # 6 rows along x direction
+n_levels_y = 16    # More levels due to finer y spacing
+n_levels_z = 15    # More levels due to finer z spacing
 spacing_x = dx     # 221 cm spacing between instances
 spacing_y = dy / 3 # 127.5/3 = 42.5 cm spacing in y
 spacing_z = dz / 3 # 221/3 = 73.67 cm spacing in z  
-start_z = 11.05     # Starting z position for first level
+start_z = 11.05    # Starting z position for first level
 
 # Define overall success flag
 overall_success = True
 
-print("=== SEATY CREATION SCRIPT ===")
+print("=== SEATY CREATION SCRIPT - FIXED VERSION ===")
 print("Creating seating substructure SeatY frame elements")
-print("Complex wire frame with {} segments".format(len(segments)))
+print("Complex wire frame with {} segments - NO ROTATION NEEDED".format(len(segments)))
 print("Two long segments will be partitioned into 4 equal parts")
-print("Instances rotated 90 degrees CW around Y axis")
+print("Geometry designed directly in XZ plane")
 print("Mesh size: {}".format(mesh_size))
-print("Finer spacing: Y={:.1f}cm, Z={:.1f}cm".format(spacing_y, spacing_z))
-print("Grid: {} x-positions, ~18 y-levels, ~15 z-levels".format(n_instances_x))
 
 # ====================================================================
 # MAIN EXECUTION BLOCK
@@ -90,14 +90,12 @@ print("\nStep 1: Verify Cross-Section for SeatY")
 def verify_seat_y_section(model, section_name, material_name):
     """Verify that the SeatY cross-section exists."""
     
-    # Check if section exists
     if section_name not in model.sections:
         warnings.warn("Section '{}' not found. Run cross-section script first.".format(section_name))
         return False
     else:
         print("  Section '{}' found".format(section_name))
     
-    # Check if material exists
     if material_name not in model.materials:
         warnings.warn("Material '{}' not found. Run script A first.".format(material_name))
         return False
@@ -115,14 +113,18 @@ if not section_ok:
 # Step 2: Create SeatY Part
 print("\nStep 2: Create SeatY Part")
 
-def create_seat_y_part(model, part_name, segments):
-    """Create SeatY part as complex 3D deformable wire frame."""
+def create_seat_y_part_fixed(model, part_name, segments):
+    """Create SeatY part as complex 3D deformable wire frame - FIXED VERSION."""
     
     print("  Creating SeatY part: {}".format(part_name))
     
     if part_name in model.parts:
-        print("  Part '{}' already exists. Skipping creation.".format(part_name))
-        return model.parts[part_name]
+        print("  Part '{}' already exists. Deleting and recreating...".format(part_name))
+        try:
+            del model.parts[part_name]
+            print("  Deleted existing part")
+        except:
+            print("  Could not delete existing part")
     
     try:
         # Create 3D deformable wire part
@@ -134,87 +136,64 @@ def create_seat_y_part(model, part_name, segments):
             print("    Segment {}: {} to {}".format(i+1, start_point, end_point))
             p.WirePolyLine(points=(start_point, end_point), mergeType=IMPRINT, meshable=ON)
         
-        # Partition the two long segments (segments 3 and 4) into 4 equal parts
+        print("  Total edges created: {}".format(len(p.edges)))
+        
+        # FIXED partitioning: Find and partition the two long segments
         print("  Partitioning long segments into 4 equal parts...")
-        try:
-            # The long segments are segments 3 and 4 in our segments list:
-            # Segment 3: (0,0.2,0) to (0,0.2,2.16) - length 2.16
-            # Segment 4: (0,0.625,0) to (0,0.625,2.16) - length 2.16
-            
-            print("    Total edges in part: {}".format(len(p.edges)))
-            
-            # Find edges by checking their endpoints against known long segment endpoints
-            long_segment_endpoints = [
-                ((0.0, 0.2, 0.0), (0.0, 0.2, 2.16)),    # Segment 3
-                ((0.0, 0.625, 0.0), (0.0, 0.625, 2.16)) # Segment 4
-            ]
-            
-            edges_to_partition = []
-            tolerance = 0.01
-            
-            for edge in p.edges:
-                try:
-                    # Get edge vertices
-                    vertices = edge.getVertices()
-                    if len(vertices) >= 2:
-                        # Get coordinates of endpoints
-                        v1_coords = vertices[0].pointOn[0]
-                        v2_coords = vertices[-1].pointOn[0]
+        
+        # Long segments are:
+        # Segment 3: (0.2,0,0) to (0.2,0,2.16) - length 2.16
+        # Segment 4: (0.625,0,0) to (0.625,0,2.16) - length 2.16
+        
+        long_segment_specs = [
+            ((0.2, 0.0, 0.0), (0.2, 0.0, 2.16)),    # Segment 3
+            ((0.625, 0.0, 0.0), (0.625, 0.0, 2.16)) # Segment 4
+        ]
+        
+        edges_partitioned = 0
+        tolerance = 0.001
+        
+        for edge in p.edges:
+            try:
+                # Get edge vertices
+                vertices = edge.getVertices()
+                if len(vertices) >= 2:
+                    # Get coordinates of endpoints
+                    v1_coords = vertices[0].pointOn[0]
+                    v2_coords = vertices[-1].pointOn[0]
+                    
+                    # Check if this edge matches any of our long segments
+                    for spec_start, spec_end in long_segment_specs:
+                        # Check both orientations of the edge
+                        match1 = (all(abs(v1_coords[i] - spec_start[i]) < tolerance for i in range(3)) and
+                                 all(abs(v2_coords[i] - spec_end[i]) < tolerance for i in range(3)))
+                        match2 = (all(abs(v1_coords[i] - spec_end[i]) < tolerance for i in range(3)) and
+                                 all(abs(v2_coords[i] - spec_start[i]) < tolerance for i in range(3)))
                         
-                        # Check if this edge matches any of our long segments
-                        for seg_start, seg_end in long_segment_endpoints:
-                            # Check both orientations of the edge
-                            match1 = (all(abs(v1_coords[i] - seg_start[i]) < tolerance for i in range(3)) and
-                                     all(abs(v2_coords[i] - seg_end[i]) < tolerance for i in range(3)))
-                            match2 = (all(abs(v1_coords[i] - seg_end[i]) < tolerance for i in range(3)) and
-                                     all(abs(v2_coords[i] - seg_start[i]) < tolerance for i in range(3)))
+                        if match1 or match2:
+                            length = math.sqrt(sum([(v2_coords[i] - v1_coords[i])**2 for i in range(3)]))
+                            print("    Found long edge: length={:.3f}".format(length))
                             
-                            if match1 or match2:
-                                length = math.sqrt(sum([(v2_coords[i] - v1_coords[i])**2 for i in range(3)]))
-                                edges_to_partition.append((edge, length))
-                                print("    Found long edge: start={}, end={}, length={:.3f}".format(
-                                    [round(c, 3) for c in v1_coords], 
-                                    [round(c, 3) for c in v2_coords], 
-                                    length))
+                            # Partition into 4 equal parts (at 0.25, 0.5, 0.75)
+                            try:
+                                p.PartitionEdgeByParam(edges=(edge,), parameter=0.25)
+                                p.PartitionEdgeByParam(edges=(edge,), parameter=0.5)
+                                p.PartitionEdgeByParam(edges=(edge,), parameter=0.75)
+                                edges_partitioned += 1
+                                print("    Successfully partitioned edge into 4 segments")
                                 break
+                            except Exception as e_part:
+                                print("    Error partitioning edge: {}".format(e_part))
                         
-                except Exception as e_edge:
-                    print("    Error checking edge: {}".format(e_edge))
-                    continue
-            
-            print("    Found {} long edges to partition".format(len(edges_to_partition)))
-            
-            # Partition the identified long edges
-            partitioned_count = 0
-            for edge, length in edges_to_partition:
-                try:
-                    # Partition into 4 equal parts (3 partition points at 0.25, 0.5, 0.75)
-                    print("    Partitioning edge with length {:.3f}...".format(length))
-                    p.PartitionEdgeByParam(edges=(edge,), parameter=0.25)
-                    p.PartitionEdgeByParam(edges=(edge,), parameter=0.5)  
-                    p.PartitionEdgeByParam(edges=(edge,), parameter=0.75)
-                    partitioned_count += 1
-                    print("    Successfully partitioned edge into 4 segments")
-                except Exception as e_part:
-                    print("    Error partitioning edge: {}".format(e_part))
-                    continue
-            
-            if partitioned_count == 2:
-                print("  Successfully partitioned 2 long segments as expected")
-            else:
-                print("  Warning: Expected to partition 2 segments, actually partitioned {}".format(partitioned_count))
-            
-            print("  Final edge count: {} (should be {} if partitioning worked)".format(
-                len(p.edges), 6 + 6))  # 6 original + 6 from partitioning
-            
-        except Exception as e_part:
-            warnings.warn("Error during partitioning: {}".format(e_part))
-            print("  Continuing without partitioning...")
-            
-        except Exception as e_part:
-            warnings.warn("Error during partitioning: {}".format(e_part))
-            print("  Continuing without partitioning...")
-
+            except Exception as e_edge:
+                continue
+        
+        print("  Edges partitioned: {} (expected: 2)".format(edges_partitioned))
+        print("  Final edge count: {}".format(len(p.edges)))
+        
+        if edges_partitioned != 2:
+            print("  WARNING: Expected to partition 2 long segments, got {}".format(edges_partitioned))
+        
         return p
         
     except Exception as e:
@@ -224,7 +203,7 @@ def create_seat_y_part(model, part_name, segments):
 
 # Create the SeatY part
 try:
-    seat_y_part = create_seat_y_part(myModel, part_name, segments)
+    seat_y_part = create_seat_y_part_fixed(myModel, part_name, segments)
     print("  SeatY part created successfully")
 except Exception as e:
     overall_success = False
@@ -263,9 +242,9 @@ def assign_section_and_orientation(model, part_name, section_name):
         )
         print("  Section assigned successfully")
         
-        # Assign beam orientation (default - n1 vector along negative global Z)
+        # Assign beam orientation
         print("  Assigning beam orientation...")
-        n1_direction = (0.0, 0.0, -1.0)
+        n1_direction = (0.0, 1.0, 0.0)  # n1 along Y axis for XZ plane geometry
         part.assignBeamSectionOrientation(
             method=N1_COSINES, 
             n1=n1_direction, 
@@ -335,16 +314,15 @@ if seat_y_part:
         overall_success = False
         warnings.warn("Failed to mesh SeatY part")
 
-# Step 5: Create SeatY Instances
-print("\nStep 5: Create SeatY Instances")
+# Step 5: Create SeatY Instances - NO ROTATION
+print("\nStep 5: Create SeatY Instances - NO ROTATION")
 
-def create_seat_y_instances(assembly_obj, model_obj, part_name, n_instances_x, n_levels_y, spacing_x, spacing_y, spacing_z, start_z):
-    """Create instances of SeatY following LowerChord pattern but with finer spacing."""
+def create_seat_y_instances_no_rotation(assembly_obj, model_obj, part_name, n_instances_x, n_levels_y, spacing_x, spacing_y, spacing_z, start_z):
+    """Create instances of SeatY with NO rotation needed."""
     
     print("  Creating SeatY instances...")
     print("  Pattern: {} instances per level, {} levels".format(n_instances_x, n_levels_y))
-    print("  Finer spacing: Y={:.1f}cm, Z={:.1f}cm between levels".format(spacing_y, spacing_z))
-    print("  Each instance rotated 90 degrees clockwise around Y axis")
+    print("  NO ROTATION - geometry designed correctly from start")
     
     if part_name not in model_obj.parts:
         warnings.warn("Part '{}' not found for instance creation".format(part_name))
@@ -356,11 +334,14 @@ def create_seat_y_instances(assembly_obj, model_obj, part_name, n_instances_x, n
     success = True
     
     try:
-        for iy in range(n_levels_y):  # More levels due to finer spacing
+        for iy in range(n_levels_y):
             y_pos = 1.275 + (iy * spacing_y)      # Start at 127.5, step by 42.5
             z_pos = start_z - (iy * spacing_z)    # Start at 1105, step back by 73.67
             
-            print("    Level {}: y = {:.1f}, z = {:.1f}".format(iy + 1, y_pos, z_pos))
+            if iy < 3:  # Show first few levels
+                print("    Level {}: y = {:.1f}, z = {:.1f}".format(iy + 1, y_pos, z_pos))
+            elif iy == 3:
+                print("    ... creating remaining levels ...")
             
             for ix in range(n_instances_x):  # 6 instances per level
                 x_position = ix * spacing_x  # x = 0, 221, 442, 663, 884, 1105
@@ -377,21 +358,9 @@ def create_seat_y_instances(assembly_obj, model_obj, part_name, n_instances_x, n
                     inst = assembly_obj.Instance(name=inst_name, part=p, dependent=ON)
                     instances_created += 1
                     
-                    # Translate to correct position
+                    # Translate to correct position - NO ROTATION
                     translation_vector = (x_position, y_pos, z_pos)
                     inst.translate(vector=translation_vector)
-                    
-                    # Rotate 90 degrees clockwise around Y axis using assembly method
-                    assembly_obj.rotate(instanceList=(inst_name,), 
-                                       axisPoint=(x_position, y_pos, z_pos), 
-                                       axisDirection=(0.0, 1.0, 0.0), 
-                                       angle=90.0)
-                    
-                    if iy < 3:  # Show first few levels
-                        print("      Created: {} at position ({:.1f}, {:.1f}, {:.1f}) rotated 90deg CW".format(
-                            inst_name, x_position, y_pos, z_pos))
-                    elif iy == 3:
-                        print("      ... creating remaining levels ...")
                     
                 except Exception as e_inst:
                     warnings.warn("Error creating instance '{}': {}".format(inst_name, e_inst))
@@ -414,13 +383,13 @@ def create_seat_y_instances(assembly_obj, model_obj, part_name, n_instances_x, n
 
 # Execute Step 5
 if seat_y_part:
-    instances_ok = create_seat_y_instances(a, myModel, part_name, n_instances_x, n_levels_y, spacing_x, spacing_y, spacing_z, start_z)
+    instances_ok = create_seat_y_instances_no_rotation(a, myModel, part_name, n_instances_x, n_levels_y, spacing_x, spacing_y, spacing_z, start_z)
     if not instances_ok:
         overall_success = False
         warnings.warn("Failed to create SeatY instances")
 
-# Step 7: Regenerate Assembly
-print("\nStep 7: Regenerating Assembly...")
+# Step 6: Regenerate Assembly
+print("\nStep 6: Regenerating Assembly...")
 try:
     a.regenerate()
     print("Assembly regenerated successfully")
@@ -430,22 +399,27 @@ except Exception as e:
 
 # Final Summary
 print("\n" + "=" * 50)
-print("SEATY CREATION SUMMARY")
+print("SEATY CREATION SUMMARY - FIXED VERSION")
 print("=" * 50)
 
 if overall_success:
     print("SUCCESS: SeatY frame elements created successfully!")
     print("SUCCESS: Cross-section: {} (RHS 48.3 x 3.0)".format(section_name))
-    print("SUCCESS: Part: {} (complex wire frame with partitioned long segments)".format(part_name))
+    print("SUCCESS: Part: {} (complex wire frame, NO rotation needed)".format(part_name))
+    print("SUCCESS: Long segments properly partitioned into 4 equal parts")
     print("SUCCESS: Mesh: Element type B31, seed size {}".format(mesh_size))
-    print("SUCCESS: Instances: 6 x-positions with finer Y/Z grid (~1620 total instances)")
-    print("SUCCESS: Set created: 'SeatY' for easy selection")
-    print("SUCCESS: Spacing: X=221cm, Y={:.1f}cm, Z={:.1f}cm".format(spacing_y, spacing_z))
-    print("SUCCESS: Rotation: 90 degrees clockwise around Y axis")
-    print("SUCCESS: Frame geometry:")
+    print("SUCCESS: Instances: 6 x-positions with finer Y/Z grid")
+    print("SUCCESS: Geometry: Designed directly in XZ plane")
+    print("SUCCESS: Beam orientation: n1 along Y axis")
+    print("")
+    print("GEOMETRY DETAILS:")
     for i, (start, end) in enumerate(segments):
-        print("    Segment {}: {} to {}".format(i+1, start, end))
-    print("\nReady for joint creation and remaining seating elements!")
+        length = math.sqrt(sum([(end[j] - start[j])**2 for j in range(3)]))
+        segment_type = "LONG (partitioned)" if length > 2.0 else "SHORT"
+        print("  Segment {}: {} to {} - {:.3f} units ({})".format(
+            i+1, start, end, length, segment_type))
+    print("")
+    print("Ready for joint creation with chord elements!")
 else:
     print("ERROR: SeatY creation completed with errors")
     print("Please review warnings above before proceeding")

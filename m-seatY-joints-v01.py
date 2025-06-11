@@ -66,7 +66,7 @@ def create_seaty_lower_joints(assembly, seaty_instances, chord_lower_instances):
     print("Creating SeatY-ChordLower joints...")
     
     wires_created = 0
-    tolerance = 0.05  # Tolerance for coincident points
+    tolerance = 0.04  # Tolerance for coincident points
     processed_pairs = set()  # Avoid duplicate wires
     
     for seaty_inst in seaty_instances:
