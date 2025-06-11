@@ -1,0 +1,17 @@
+Coordinates of vertex 4 :0,255,0
+Coordinates of vertex 4 :0,127.5,110.5
+:0.,382.5,663.
+
+low closer
+0,127.5,1105
+0,255,884.
+top  fartest
+1326,637.5,221 
+1326 ,765 ,0.
+
+
+perfect.Now, let us make a script to create the joints for SeatY. we need to search for the points where it intersects ChordLower and ChordUpper. 
+
+Npw, let us make a sketch to create SeatH. SeatH part is wire 3d deformable, mesh 0.12. It is composed by 5 parallel, disjointed wires of equal length. each wire is 0.704 long along z and the offset is 0.54 along x. the first and last wire have cross section "RHS_60x5x2e5". the middle wires have cross section "RHS_40x25x2e5". these cross sections are already in the assembly. since they are rectangular cross sections, we need to ensure proper orientation. try one and i tell you if changes are needed. Instances: the part follows the very same pattern as SeatY.
+
+Let us make the load cases. Load Case "Ultimate". we apply 
