@@ -57,7 +57,7 @@ spacing_x = dx     # 221 cm spacing between instances
 spacing_y = dy / 3 # 127.5/3 = 42.5 cm spacing in y
 spacing_z = dz / 3 # 221/3 = 73.67 cm spacing in z  
 start_z = 11.05    # Starting z position for first level
-
+start_x=0.025
 # Define overall success flag
 overall_success = True
 
@@ -344,8 +344,9 @@ def create_seat_y_instances_no_rotation(assembly_obj, model_obj, part_name, n_in
                 print("    ... creating remaining levels ...")
             
             for ix in range(n_instances_x):  # 6 instances per level
-                x_position = ix * spacing_x  # x = 0, 221, 442, 663, 884, 1105
+                x_position =start_x + (ix * spacing_x)  # x = 0, 221, 442, 663, 884, 1105
                 
+
                 # Instance naming
                 inst_name = "SeatY_x{}_y{}_z{}".format(ix, iy + 1, 0)
                 
