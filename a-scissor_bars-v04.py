@@ -28,6 +28,154 @@ dx = 2.21    # spacing perpendicular to slope (x-direction)
 dy = 1.275  # height increment per level (y-direction)  
 dz = 2.21    # spacing along slope (z-direction)
 
+# ============================================================================
+# COORDINATE PRECISION FUNCTIONS (ADD THESE RIGHT HERE)
+# ============================================================================
+
+def get_exact_modular_coordinate(module_index, spacing, precision=6):
+    """Calculate exact modular coordinate with consistent precision."""
+    exact_coord = module_index * spacing
+    return round(exact_coord, precision)
+
+def get_modular_position(ix, iy, iz, dx_param=None, dy_param=None, dz_param=None, precision=6):
+    """Calculate exact modular position (x, y, z) from module indices."""
+    # Use global values if not provided
+    if dx_param is None: dx_param = dx
+    if dy_param is None: dy_param = dy
+    if dz_param is None: dz_param = dz
+    
+ # ============================================================================
+# STANDARDIZED COORDINATE SYSTEM - ADD TO ALL 3 SCRIPTS
+# ============================================================================
+
+def get_exact_modular_coordinate(module_index, spacing, precision=6):
+    """
+    Calculate exact modular coordinate with consistent precision.
+    This function eliminates floating-point accumulation errors.
+    
+    Args:
+        module_index (int): Module index (0, 1, 2, ...)
+        spacing (float): Module spacing (dx, dy, or dz)
+        precision (int): Number of decimal places to round to
+    
+    Returns:
+        float: Exact coordinate rounded to specified precision
+    """
+    exact_coord = module_index * spacing
+    return round(exact_coord, precision)
+
+def get_modular_position(ix, iy, iz, dx_param=None, dy_param=None, dz_param=None, precision=6):
+    """
+    Calculate exact modular position (x, y, z) from module indices.
+    This is the MAIN function that ensures coordinate consistency.
+    
+    Args:
+        ix, iy, iz (int): Module indices
+        dx_param, dy_param, dz_param (float): Module spacings (uses globals if None)
+        precision (int): Number of decimal places to round to
+    
+    Returns:
+        tuple: (x, y, z) coordinates with consistent precision
+    """
+    # Use global values if not provided
+    if dx_param is None: dx_param = dx
+    if dy_param is None: dy_param = dy
+    if dz_param is None: dz_param = dz
+    
+    # Calculate exact coordinates using the same method in all scripts
+    x = get_exact_modular_coordinate(ix, dx_param, precision)
+    y = get_exact_modular_coordinate(iy, dy_param, precision)
+    z = get_exact_modular_coordinate(iz, dz_param, precision)
+    
+    return (x, y, z)
+
+def convert_to_module_indices(x, y, z, dx_param=None, dy_param=None, dz_param=None):
+    """
+    Convert absolute coordinates back to module indices.
+    Ensures consistent conversion in all scripts.
+    
+    Args:
+        x, y, z (float): Absolute coordinates
+        dx_param, dy_param, dz_param (float): Module spacings (uses globals if None)
+    
+    Returns:
+        tuple: (ix, iy, iz) module indices
+    """
+    # Use global values if not provided
+    if dx_param is None: dx_param = dx
+    if dy_param is None: dy_param = dy
+    if dz_param is None: dz_param = dz
+    
+    # Calculate module indices with proper rounding
+    ix = int(round(x / dx_param))
+    iy = int(round(y / dy_param))
+    iz = int(round(z / dz_param))
+    
+    return (ix, iy, iz)
+
+def standardize_position(position, precision=6):
+    """
+    Standardize any position to ensure consistent precision.
+    Use this to fix existing coordinates.
+    
+    Args:
+        position (tuple): (x, y, z) coordinates
+        precision (int): Number of decimal places
+    
+    Returns:
+        tuple: Standardized (x, y, z) coordinates
+    """
+    return tuple(round(coord, precision) for coord in position)
+
+def validate_coordinate_match(pos1, pos2, tolerance=0.001):
+    """
+    Check if two coordinates match within tolerance.
+    Use this to verify that bars and RPs are coincident.
+    
+    Args:
+        pos1, pos2 (tuple): (x, y, z) positions to compare
+        tolerance (float): Maximum allowed difference
+    
+    Returns:
+        bool: True if positions match
+    """
+    if len(pos1) != len(pos2):
+        return False
+    
+    max_diff = max(abs(c1 - c2) for c1, c2 in zip(pos1, pos2))
+    return max_diff <= tolerance
+
+def print_coordinate_debug(label, ix, iy, iz, position):
+    """
+    Print coordinate information for debugging.
+    Helps verify that coordinates are calculated correctly.
+    """
+    print("  {}: Module({},{},{}) -> Position({:.6f}, {:.6f}, {:.6f})".format(
+        label, ix, iy, iz, position[0], position[1], position[2]))
+
+# Test the coordinate system (call this once to verify)
+def test_coordinate_system():
+    """Test that the coordinate system works correctly."""
+    print("=== COORDINATE SYSTEM TEST ===")
+    
+    # Test the problematic case
+    test_pos = get_modular_position(6, 0, 4)
+    print("Problem case test:")
+    print("  Module (6,0,4) -> Exact position: ({:.6f}, {:.6f}, {:.6f})".format(*test_pos))
+    print("  This should be: (13.260000, 0.000000, 8.840000)")
+    
+    # Test round-trip conversion
+    back_indices = convert_to_module_indices(*test_pos)
+    print("  Round-trip test: {} -> {}".format((6, 0, 4), back_indices))
+    
+    if test_pos == (13.26, 0.0, 8.84) and back_indices == (6, 0, 4):
+        print("  ✓ Coordinate system working correctly!")
+    else:
+        print("  ✗ Coordinate system error!")
+    
+    print("")
+    ##################### 
+
 # Grandstand dimensions
 n_x = 6     # BarX: creates 7 rows (0-6), BarZ: creates max 6 rows (1-6) and 6 modules per row (0-5)
 n_y = 5     # BarX: creates 5 levels (0-4), BarZ: creates 6 levels (0-5) including top
@@ -431,13 +579,14 @@ def create_grandstand_instances(assembly_obj, model_obj, n_x, n_y, n_z_base, ste
                             inst_count_z_created += 1
                         
                         # Calculate translation vector  
-                            x_pos = ix * step_x
-                            y_pos = iy * step_y
-                            z_pos = iz * step_z
-                        
+                                # Use exact modular coordinates
+                            x_pos, y_pos, z_pos = get_modular_position(ix, iy, iz)
+    
                             if x_pos != 0.0 or y_pos != 0.0 or z_pos != 0.0:
                                 inst.translate(vector=(x_pos, y_pos, z_pos))
-                            
+
+
+
                         except Exception as e_inst:
                             warnings.warn("Error creating/translating instance '{}': {}".format(inst_name, e_inst))
                             print(traceback.format_exc())

@@ -1,3 +1,4 @@
+# -*- coding: utf-8 -*-
 from abaqus import *
 from abaqusConstants import *
 import warnings
@@ -9,18 +10,16 @@ import mesh
 import section
 import math
 
-# SeatY Script for Grandstand Seating Substructure - FIXED VERSION
-# Creates 3D deformable wire frame WITHOUT rotation
-# Cross-section: RHS_48e3 (already exists in model)
-# Long horizontal segments partitioned into 4 equal parts
+# SeatY Script - partition encoded in geometry
+# Long segments are created as 4 individual segments directly
 
 # Basic Setup: Model & Parameters
 model_name = 'Model-1'
-material_name = 'Steel_355'  # Already exists from script A
-section_name = 'RHS_48e3'    # Cross-section already in model
+material_name = 'Steel_355'
+section_name = 'RHS_48e3'
 part_name = "SeatY"
 
-# Geometry Parameters (from script A)
+# Geometry Parameters
 dx = 2.21    # x-direction spacing between instances
 dy = 1.275  # y-direction height increment  
 dz = 2.21    # z-direction spacing
@@ -28,28 +27,40 @@ dz = 2.21    # z-direction spacing
 # SeatY specific parameters
 mesh_size = 0.12
 
-# SeatY geometry points - CORRECTED orientation (no rotation needed)
-# Original was in YZ plane, now in XZ plane to match final position
-points = [
-    (0.0, 0.0, 0.0),      # Point 0: Start
-    (0.0, 0.2, 0.0),      # Point 1: First horizontal end (was vertical)
-    (0, 0.625, 0.0),    # Point 2: Second horizontal end (was vertical)
-    (2.16, 0.2, 0),     # Point 3: End of first long segment
-    (2.16, 0.625, 0),   # Point 4: End of second long segment
-    (2.16, 0.0, 0),     # Point 5: Final point
-]
+# FIXED GEOMETRY: Create all segments individually
+# Original long segments divided into 4 parts each
+segment_length = 2.16 / 4  # 0.54 units per segment
 
-# Wire segments definition
-segments = [
-    (points[0], points[1]),  # Segment 1: (0,0,0) to (0.2,0,0) - SHORT
-    (points[1], points[2]),  # Segment 2: (0.2,0,0) to (0.625,0,0) - SHORT
-    (points[1], points[3]),  # Segment 3: (0.2,0,0) to (0.2,0,2.16) - LONG, needs partition
-    (points[2], points[4]),  # Segment 4: (0.625,0,0) to (0.625,0,2.16) - LONG, needs partition
-    (points[5], points[3]),  # Segment 5: (0,0,2.16) to (0.2,0,2.16) - SHORT
-    (points[3], points[4]),  # Segment 6: (0.2,0,2.16) to (0.625,0,2.16) - SHORT
-]
+print("=== SEATY CREATION - FIXED GEOMETRY VERSION ===")
+print("Long segments divided into 4 parts of {:.3f} units each".format(segment_length))
 
-# Instance pattern parameters (same as before but NO rotation)
+# Define all wire segments with correct partitioning
+def create_seaty_segments():
+    """Create all SeatY segments with proper division of long segments."""
+    
+    segments = []
+    
+    # Short segments (unchanged from original)
+    segments.append(((0.0, 0.0, 0.0), (0.0, 0.2, 0.0)))      # Segment 1: vertical short
+    segments.append(((0.0, 0.2, 0.0), (0.0, 0.625, 0.0)))    # Segment 2: vertical short
+    segments.append(((2.16, 0.0, 0.0), (2.16, 0.2, 0.0)))    # Segment 3: vertical short
+    segments.append(((2.16, 0.2, 0.0), (2.16, 0.625, 0.0)))  # Segment 4: vertical short
+    
+    # First long segment divided into 4 parts (y = 0.2, varying x)
+    for i in range(4):
+        x_start = i * segment_length        # 0, 0.54, 1.08, 1.62
+        x_end = (i + 1) * segment_length    # 0.54, 1.08, 1.62, 2.16
+        segments.append(((x_start, 0.2, 0.0), (x_end, 0.2, 0.0)))
+    
+    # Second long segment divided into 4 parts (y = 0.625, varying x)  
+    for i in range(4):
+        x_start = i * segment_length        # 0, 0.54, 1.08, 1.62
+        x_end = (i + 1) * segment_length    # 0.54, 1.08, 1.62, 2.16
+        segments.append(((x_start, 0.625, 0.0), (x_end, 0.625, 0.0)))
+    
+    return segments
+
+# Instance pattern parameters
 n_instances_x = 6  # 6 rows along x direction
 n_levels_y = 16    # More levels due to finer y spacing
 n_levels_z = 15    # More levels due to finer z spacing
@@ -57,16 +68,10 @@ spacing_x = dx     # 221 cm spacing between instances
 spacing_y = dy / 3 # 127.5/3 = 42.5 cm spacing in y
 spacing_z = dz / 3 # 221/3 = 73.67 cm spacing in z  
 start_z = 11.05    # Starting z position for first level
-start_x=0.025
+start_x = 0.025
+
 # Define overall success flag
 overall_success = True
-
-print("=== SEATY CREATION SCRIPT - FIXED VERSION ===")
-print("Creating seating substructure SeatY frame elements")
-print("Complex wire frame with {} segments - NO ROTATION NEEDED".format(len(segments)))
-print("Two long segments will be partitioned into 4 equal parts")
-print("Geometry designed directly in XZ plane")
-print("Mesh size: {}".format(mesh_size))
 
 # ====================================================================
 # MAIN EXECUTION BLOCK
@@ -110,11 +115,11 @@ if not section_ok:
     overall_success = False
     warnings.warn("Required cross-section or material not found")
 
-# Step 2: Create SeatY Part
-print("\nStep 2: Create SeatY Part")
+# Step 2: Create SeatY Part with Fixed Geometry
+print("\nStep 2: Create SeatY Part with Fixed Geometry")
 
-def create_seat_y_part_fixed(model, part_name, segments):
-    """Create SeatY part as complex 3D deformable wire frame - FIXED VERSION."""
+def create_seat_y_part_fixed_geometry(model, part_name):
+    """Create SeatY part with correct segmentation from the beginning."""
     
     print("  Creating SeatY part: {}".format(part_name))
     
@@ -130,69 +135,33 @@ def create_seat_y_part_fixed(model, part_name, segments):
         # Create 3D deformable wire part
         p = model.Part(name=part_name, dimensionality=THREE_D, type=DEFORMABLE_BODY)
         
-        # Create all wire segments
+        # Get all segments with correct division
+        segments = create_seaty_segments()
+        
         print("  Creating {} wire segments...".format(len(segments)))
+        print("  Segment breakdown:")
+        print("    - 4 short vertical segments")
+        print("    - 4 segments for first long edge (y=0.2)")
+        print("    - 4 segments for second long edge (y=0.625)")
+        print("    - Total: {} segments".format(len(segments)))
+        
+        # Create all wire segments
         for i, (start_point, end_point) in enumerate(segments):
-            print("    Segment {}: {} to {}".format(i+1, start_point, end_point))
+            length = math.sqrt(sum([(end_point[j] - start_point[j])**2 for j in range(3)]))
+            segment_type = "LONG-PART" if abs(length - segment_length) < 0.01 else "SHORT"
+            
+            print("    Segment {}: {} to {} - {:.3f} units ({})".format(
+                i+1, start_point, end_point, length, segment_type))
+            
             p.WirePolyLine(points=(start_point, end_point), mergeType=IMPRINT, meshable=ON)
         
         print("  Total edges created: {}".format(len(p.edges)))
+        print("  Expected: 12 edges (4 short + 4 + 4 long parts)")
         
-        # FIXED partitioning: Find and partition the two long segments
-        print("  Partitioning long segments into 4 equal parts...")
-        
-        # Long segments are:
-        # Segment 3: (0.2,0,0) to (0.2,0,2.16) - length 2.16
-        # Segment 4: (0.625,0,0) to (0.625,0,2.16) - length 2.16
-        
-        long_segment_specs = [
-            ((0.2, 0.0, 0.0), (0.2, 0.0, 2.16)),    # Segment 3
-            ((0.625, 0.0, 0.0), (0.625, 0.0, 2.16)) # Segment 4
-        ]
-        
-        edges_partitioned = 0
-        tolerance = 0.001
-        
-        for edge in p.edges:
-            try:
-                # Get edge vertices
-                vertices = edge.getVertices()
-                if len(vertices) >= 2:
-                    # Get coordinates of endpoints
-                    v1_coords = vertices[0].pointOn[0]
-                    v2_coords = vertices[-1].pointOn[0]
-                    
-                    # Check if this edge matches any of our long segments
-                    for spec_start, spec_end in long_segment_specs:
-                        # Check both orientations of the edge
-                        match1 = (all(abs(v1_coords[i] - spec_start[i]) < tolerance for i in range(3)) and
-                                 all(abs(v2_coords[i] - spec_end[i]) < tolerance for i in range(3)))
-                        match2 = (all(abs(v1_coords[i] - spec_end[i]) < tolerance for i in range(3)) and
-                                 all(abs(v2_coords[i] - spec_start[i]) < tolerance for i in range(3)))
-                        
-                        if match1 or match2:
-                            length = math.sqrt(sum([(v2_coords[i] - v1_coords[i])**2 for i in range(3)]))
-                            print("    Found long edge: length={:.3f}".format(length))
-                            
-                            # Partition into 4 equal parts (at 0.25, 0.5, 0.75)
-                            try:
-                                p.PartitionEdgeByParam(edges=(edge,), parameter=0.25)
-                                p.PartitionEdgeByParam(edges=(edge,), parameter=0.5)
-                                p.PartitionEdgeByParam(edges=(edge,), parameter=0.75)
-                                edges_partitioned += 1
-                                print("    Successfully partitioned edge into 4 segments")
-                                break
-                            except Exception as e_part:
-                                print("    Error partitioning edge: {}".format(e_part))
-                        
-            except Exception as e_edge:
-                continue
-        
-        print("  Edges partitioned: {} (expected: 2)".format(edges_partitioned))
-        print("  Final edge count: {}".format(len(p.edges)))
-        
-        if edges_partitioned != 2:
-            print("  WARNING: Expected to partition 2 long segments, got {}".format(edges_partitioned))
+        if len(p.edges) == 12:
+            print("  SUCCESS: Correct number of edges created")
+        else:
+            print("  WARNING: Expected 12 edges, got {}".format(len(p.edges)))
         
         return p
         
@@ -203,7 +172,7 @@ def create_seat_y_part_fixed(model, part_name, segments):
 
 # Create the SeatY part
 try:
-    seat_y_part = create_seat_y_part_fixed(myModel, part_name, segments)
+    seat_y_part = create_seat_y_part_fixed_geometry(myModel, part_name)
     print("  SeatY part created successfully")
 except Exception as e:
     overall_success = False
@@ -314,8 +283,8 @@ if seat_y_part:
         overall_success = False
         warnings.warn("Failed to mesh SeatY part")
 
-# Step 5: Create SeatY Instances - NO ROTATION
-print("\nStep 5: Create SeatY Instances - NO ROTATION")
+# Step 5: Create SeatY Instances
+print("\nStep 5: Create SeatY Instances")
 
 def create_seat_y_instances_no_rotation(assembly_obj, model_obj, part_name, n_instances_x, n_levels_y, spacing_x, spacing_y, spacing_z, start_z):
     """Create instances of SeatY with NO rotation needed."""
@@ -344,9 +313,8 @@ def create_seat_y_instances_no_rotation(assembly_obj, model_obj, part_name, n_in
                 print("    ... creating remaining levels ...")
             
             for ix in range(n_instances_x):  # 6 instances per level
-                x_position =start_x + (ix * spacing_x)  # x = 0, 221, 442, 663, 884, 1105
+                x_position = start_x + (ix * spacing_x)  # x = 0, 221, 442, 663, 884, 1105
                 
-
                 # Instance naming
                 inst_name = "SeatY_x{}_y{}_z{}".format(ix, iy + 1, 0)
                 
@@ -400,27 +368,28 @@ except Exception as e:
 
 # Final Summary
 print("\n" + "=" * 50)
-print("SEATY CREATION SUMMARY - FIXED VERSION")
+print("SEATY CREATION SUMMARY - FIXED GEOMETRY VERSION")
 print("=" * 50)
 
 if overall_success:
-    print("SUCCESS: SeatY frame elements created successfully!")
+    print("SUCCESS: SeatY frame elements created with correct segmentation!")
     print("SUCCESS: Cross-section: {} (RHS 48.3 x 3.0)".format(section_name))
-    print("SUCCESS: Part: {} (complex wire frame, NO rotation needed)".format(part_name))
-    print("SUCCESS: Long segments properly partitioned into 4 equal parts")
+    print("SUCCESS: Part: {} (12 individual segments, NO partitioning needed)".format(part_name))
+    print("SUCCESS: Long segments automatically divided into 4 parts each")
     print("SUCCESS: Mesh: Element type B31, seed size {}".format(mesh_size))
     print("SUCCESS: Instances: 6 x-positions with finer Y/Z grid")
-    print("SUCCESS: Geometry: Designed directly in XZ plane")
+    print("SUCCESS: Geometry: Designed directly in XZ plane with correct segmentation")
     print("SUCCESS: Beam orientation: n1 along Y axis")
     print("")
     print("GEOMETRY DETAILS:")
+    segments = create_seaty_segments()
     for i, (start, end) in enumerate(segments):
         length = math.sqrt(sum([(end[j] - start[j])**2 for j in range(3)]))
-        segment_type = "LONG (partitioned)" if length > 2.0 else "SHORT"
+        segment_type = "LONG-PART" if abs(length - segment_length) < 0.01 else "SHORT"
         print("  Segment {}: {} to {} - {:.3f} units ({})".format(
             i+1, start, end, length, segment_type))
     print("")
-    print("Ready for joint creation with chord elements!")
+    print("NO POST-PROCESSING PARTITIONING REQUIRED!")
 else:
     print("ERROR: SeatY creation completed with errors")
     print("Please review warnings above before proceeding")
