@@ -153,16 +153,15 @@ def create_required_sets(assembly):
         # Seating sets
         'SeatInner',
         'SeatSide', 
-        'SeatInnerEdges',
-        'SeatSideEdges',
+
         
         # Reference point sets
-        'RP_inner',
+        'RP-inner',
         'RP_side',
-        'RP_corner',
-        'RPw_inner',
-        'RPw_edge', 
-        'RPw_corner'
+        'RP-corner',
+        'RPw_2',
+        'RPw_1', 
+        'RPw_1/2'
     ]
     
     print("  Checking for required sets...")
@@ -234,51 +233,7 @@ def create_missing_set(assembly, set_name):
         print("      Error creating set '{}': {}".format(set_name, e))
         return False
 
-def find_rps_by_location_pattern(assembly, pattern):
-    """Find RPs based on location patterns."""
     
-    matching_rps = []
-    
-    try:
-        # Look for modular RP sets from previous scripts
-        for set_name in assembly.sets.keys():
-            if set_name.startswith('RP_x') and '_y' in set_name and '_z' in set_name:
-                try:
-                    parts = set_name.split('_')
-                    mod_x = int(parts[1][1:])  # Remove 'x'
-                    mod_y = int(parts[2][1:])  # Remove 'y' 
-                    mod_z = int(parts[3][1:])  # Remove 'z'
-                    
-                    # Apply pattern-based filtering
-                    if pattern == 'internal':
-                        # Internal RPs: not at edges
-                        if 1 <= mod_x <= 4 and mod_y > 0:
-                            rp_set = assembly.sets[set_name]
-                            if hasattr(rp_set, 'referencePoints'):
-                                matching_rps.extend(rp_set.referencePoints)
-                    
-                    elif pattern == 'side':
-                        # Side RPs: at x edges but not corners
-                        if (mod_x == 0 or mod_x == 6) and 1 <= mod_z <= 4:
-                            rp_set = assembly.sets[set_name]
-                            if hasattr(rp_set, 'referencePoints'):
-                                matching_rps.extend(rp_set.referencePoints)
-                    
-                    elif pattern == 'corner':
-                        # Corner RPs: at both x and z edges
-                        if (mod_x == 0 or mod_x == 6) and (mod_z == 0 or mod_z == 5):
-                            rp_set = assembly.sets[set_name]
-                            if hasattr(rp_set, 'referencePoints'):
-                                matching_rps.extend(rp_set.referencePoints)
-                                
-                except (ValueError, IndexError):
-                    continue
-                    
-    except Exception as e:
-        print("    Error finding RPs by pattern '{}': {}".format(pattern, e))
-    
-    # Remove duplicates
-    return list(set(matching_rps))
 
 def apply_loads_to_steps(model, assembly):
     """Apply loads to each analysis step."""
@@ -374,12 +329,12 @@ def apply_uls_loads(model, assembly):
         ('Qv_seatingEdge', 'SeatSide', 'pressure', 0, -1823, 0),
         
         # Concentrated loads
-        ('Qnot_inner', 'RP_inner', 'concentrated', 0, 0, 3297),
+        ('Qnot_inner', 'RP-inner', 'concentrated', 0, 0, 3297),
         ('Qnot_edge', 'RP_side', 'concentrated', 0, 0, 1648),
-        ('Qnot_corner', 'RP_corner', 'concentrated', 0, 0, 824),
-        ('Qw_inner', 'RPw_inner', 'pressure', 0, 0, 90),
-        ('Qw_edge', 'RPw_edge', 'pressure', 0, 0, 45),
-        ('Qw_corner', 'RPw_corner', 'pressure', 0, 0, 23)
+        ('Qnot_corner', 'RP-corner', 'concentrated', 0, 0, 824),
+        ('Qw_inner', 'RPw_2', 'concentrated', 0, 0, 184),
+        ('Qw_edge', 'RPw_1', 'concentrated', 0, 0, 92),
+        ('Qw_corner', 'RPw_1/2', 'concentrated', 0, 0, 46)
     ]
     
     loads_created += apply_load_definitions(model, assembly, step_name, load_definitions, 'ULS')
@@ -395,16 +350,16 @@ def apply_sls_wz_loads(model, assembly):
     # Load definitions for SLS_wz
     load_definitions = [
         # Line loads
-        ('Qv_seatingInner', 'SeatInnerEdges', 'pressure', 0, -1890, 0),
-        ('Qv_seatingEdge', 'SeatSideEdges', 'pressure', 0, -945, 0),
+        ('Qv_seatingInner', 'SeatInner', 'pressure', 0, -1890, 0),
+        ('Qv_seatingEdge', 'SeatSide', 'pressure', 0, -945, 0),
         
         # Concentrated loads
-        ('Qnot_inner', 'RP_inner', 'concentrated', 0, 0, 2442),
+        ('Qnot_inner', 'RP-inner', 'concentrated', 0, 0, 2442),
         ('Qnot_edge', 'RP_side', 'concentrated', 0, 0, 1221),
-        ('Qnot_corner', 'RP_corner', 'concentrated', 0, 0, 611),
-        ('Qw_inner', 'RPw_inner', 'pressure', 0, 0, 40),
-        ('Qw_edge', 'RPw_edge', 'pressure', 0, 0, 20),
-        ('Qw_corner', 'RPw_corner', 'pressure', 0, 0, 10)
+        ('Qnot_corner', 'RP-corner', 'concentrated', 0, 0, 611),
+        ('Qw_inner', 'RPw_2', 'concentrated', 0, 0, 82),
+        ('Qw_edge', 'RPw_1', 'concentrated', 0, 0, 41),
+        ('Qw_corner', 'RPw_1/2', 'concentrated', 0, 0, 20)
     ]
     
     loads_created += apply_load_definitions(model, assembly, step_name, load_definitions, 'SLS_wz')
@@ -424,12 +379,12 @@ def apply_sls_wx_loads(model, assembly):
         ('Qv_seatingEdge', 'SeatSideEdges', 'pressure', 0, -945, 0),
         
         # Concentrated loads (wind loads in x direction)
-        ('Qnot_inner', 'RP_inner', 'concentrated', 2442, 0, 0),
+        ('Qnot_inner', 'RP-inner', 'concentrated', 2442, 0, 0),
         ('Qnot_edge', 'RP_side', 'concentrated', 1221, 0, 0),
-        ('Qnot_corner', 'RP_corner', 'concentrated', 611, 0, 0),
-        ('Qw_inner', 'RPw_inner', 'pressure', 40, 0, 0),
-        ('Qw_edge', 'RPw_edge', 'pressure', 20, 0, 0),
-        ('Qw_corner', 'RPw_corner', 'pressure', 10, 0, 0)
+        ('Qnot_corner', 'RP-corner', 'concentrated', 611, 0, 0),
+        ('Qw_inner', 'RPw_2', 'concentrated', 82, 0, 0),
+        ('Qw_edge', 'RPw_1', 'concentrated', 41, 0, 0),
+        ('Qw_corner', 'RPw_1/2', 'concentrated', 20, 0, 0)
     ]
     
     loads_created += apply_load_definitions(model, assembly, step_name, load_definitions, 'SLS_wx')
