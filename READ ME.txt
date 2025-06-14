@@ -1,3 +1,3 @@
-The scripts make the bars + instances, need to make the sets of bars
-It makes the connectors wires, need to make set, connector sections and apply
+The scripts make instances and connector wires, need to make the sets of instances and wires (joints)
+apply sections, make connector sections and apply
 Need to select (not do) RPs for load
